@@ -1,6 +1,0 @@
-{
-  "usingComponents": {
-    "pano": "plugin://wxPano/pano"
-  },
-  "navigationBarTitleText": "全景地图"
-}

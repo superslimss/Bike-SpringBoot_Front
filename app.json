@@ -1,13 +1,10 @@
 {
     "pages": [
         "pages/map/map",
-        "pages/home/home",
-        "pages/home/introduction/introduction",
         "pages/map/instruction/instruction",
         "pages/map/search/search",
-        "pages/more/more",
-        "pages/more/statement/statement",
-        "pages/home/pano/pano"
+        "pages/user/user",
+        "pages/user/statement/statement"
     ],
     "window": {
         "backgroundTextStyle": "light",
@@ -24,16 +21,10 @@
                 "text": "地图"
             },
             {
-                "selectedIconPath": "/images/tabbar/icon_home_HL.png",
-                "iconPath": "/images/tabbar/icon_home.png",
-                "pagePath": "pages/home/home",
-                "text": "首页"
-            },
-            {
-                "selectedIconPath": "/images/tabbar/icon_more_HL.png",
-                "iconPath": "/images/tabbar/icon_more.png",
-                "pagePath": "pages/more/more",
-                "text": "更多"
+                "selectedIconPath": "/images/tabbar/icon_user_HL.png",
+                "iconPath": "/images/tabbar/icon_user.png",
+                "pagePath": "pages/user/user",
+                "text": "我的"
             }
         ]
     },
