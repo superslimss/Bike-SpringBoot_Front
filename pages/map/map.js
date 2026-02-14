@@ -32,6 +32,8 @@ Page({
     // 5. 导航起点与终点
     start: { name: '当前位置', latitude: '', longitude: '' },
     end: { name: '', latitude: '', longitude: '' },
+
+    
   },
 
   onLoad(options) {
@@ -111,6 +113,7 @@ Page({
             iconPath: _this.data.bikeIcon,
             width: 35,
             height: 35,
+            zIndex: 999,              // 确保单车图层在最上方
             callout: {
               content: " 扫码用车 ",
               display: 'BYCLICK'
