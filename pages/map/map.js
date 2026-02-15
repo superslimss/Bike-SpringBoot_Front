@@ -33,14 +33,33 @@ Page({
     start: { name: '当前位置', latitude: '', longitude: '' },
     end: { name: '', latitude: '', longitude: '' },
 
-    
+    // 6. 设置手动模拟的经纬度变量
+    myMockLat: 41.857358, 
+    myMockLng: 123.788281,
   },
 
   onLoad(options) {
     // 确保启动时即使网络报错，基础数据也能加载
     this.initStaticSites();
-    this.initUserLocation();
     this.loadBikesFromServer(); 
+    // 延迟500ms确保前面的渲染不冲突
+    setTimeout(() => {
+      this.initUserLocation();
+    }, 500);
+  },
+
+  // --- 在这里插入 getMyMarker 函数 ---
+  getMyMarker() {
+    return {
+      id: 9999,
+      latitude: this.data.myMockLat,
+      longitude: this.data.myMockLng,
+      iconPath: '/images/my_pos.png', 
+      width: 32,
+      height: 32,
+      anchor: { x: 0.5, y: 0.5 },
+      zIndex: 1000
+    };
   },
 
   /**
@@ -87,7 +106,7 @@ Page({
 
     this.setData({
       category: categoryIndex,
-      markers: [...staticMarkers, ...this.data.bikeMarkers]
+      markers: [...staticMarkers, ...this.data.bikeMarkers, this.getMyMarker()]
     }, () => {
       // 只有当地标存在时才执行视角缩放
       if (staticMarkers.length > 0) {
@@ -156,16 +175,41 @@ Page({
       });
     }
   },
+   /**
+   * 用户坐标模拟
+   */
   initUserLocation() {
-    wx.getLocation({
-      type: 'gcj02',
-      success: (res) => {
-        this.setData({
-          'start.latitude': res.latitude,
-          'start.longitude': res.longitude
-        });
-      }
+    // wx.getLocation({
+    //   type: 'gcj02',
+    //   success: (res) => {
+    //     this.setData({
+    //       'start.latitude': res.latitude,
+    //       'start.longitude': res.longitude
+    //     });
+    //   }
+    // });
+    this.setData({
+      'start.latitude': this.data.myMockLat,
+      'start.longitude': this.data.myMockLng
     });
+    
+    // 初始化一个代表“我”的 Marker，让地图上能看到小蓝点
+  // 2. 初始化 Marker（彻底删除 callout 属性）
+    const myMarker = {
+      id: 9999,
+      latitude: this.data.myMockLat,
+      longitude: this.data.myMockLng,
+      iconPath: '/images/my_pos.png', 
+      width: 32,
+      height: 32,
+      anchor: { x: 0.5, y: 0.5 },
+      zIndex: 1000 // 赋予最高层级，确保不被地标压住
+    };
+
+  // 将“我”的标记加入 markers 数组
+  this.setData({
+    markers: [...this.data.markers, myMarker]
+  });
   },
 
   /**

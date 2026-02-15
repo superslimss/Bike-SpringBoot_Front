@@ -280,6 +280,33 @@ module.exports = {
             },
           ],
         },
+        // 6. 食堂
+        {
+          id: 6,
+          name: '食堂',
+          list: [
+            {
+              id: 1,
+              name: '龙源食堂',
+              aliases: '',
+              img: '',
+              desc: '位于校园西侧龙源公寓附近',
+              latitude: 41.856918,
+              longitude: 123.786091,
+              scale: 16.0
+            },
+            {
+              id: 2,
+              name: '盛和食堂',
+              aliases: '',
+              img: '',
+              desc: '位于校园西南侧盛和区域',
+              latitude: 41.854187,
+              longitude: 123.786279,
+              scale: 16.0
+            },
+          ],
+        },
       ],
     },
   ],
