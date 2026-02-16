@@ -58,7 +58,8 @@ Page({
       width: 32,
       height: 32,
       anchor: { x: 0.5, y: 0.5 },
-      zIndex: 1000
+      zIndex: 1000,
+      
     };
   },
 
@@ -203,7 +204,20 @@ Page({
       width: 32,
       height: 32,
       anchor: { x: 0.5, y: 0.5 },
-      zIndex: 1000 // 赋予最高层级，确保不被地标压住
+      zIndex: 1000, // 赋予最高层级，确保不被地标压住
+
+      callout: {
+        content: '我的位置',
+        display: 'ALWAYS',
+        padding: 4,          // 缩小内边距，让边框贴近文字
+        borderRadius: 12,    // 适中的圆角，看起来既圆润又不突兀
+        fontSize: 12,        // 减小字号，显得更精致
+        color: '#000000',
+        bgColor: '#ffffff',  // 建议改用蓝色背景配白字，视觉上体积感更小
+        textAlign: 'center',
+        borderWidth: 0
+      }
+
     };
 
   // 将“我”的标记加入 markers 数组
@@ -269,7 +283,17 @@ Page({
 
   restore() {
     const mapCtx = wx.createMapContext('map');
-    mapCtx.moveToLocation();
+    mapCtx.moveToLocation({
+      latitude: this.data.myMockLat,
+      longitude: this.data.myMockLng,
+      success: () => {
+        wx.showToast({
+          title: '已回到我的位置',
+          icon: 'none',
+          duration: 1000
+        });
+      }
+    });
     this.loadBikesFromServer();
   }
 });

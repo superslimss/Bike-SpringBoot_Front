@@ -166,6 +166,25 @@
   /* margin-bottom: 10px; */
 }
 
+.location-btn {
+  position: absolute;
+  right: 30rpx;
+  bottom: 60rpx; /* 根据你的底部布局调整高度 */
+  width: 90rpx;
+  height: 90rpx;
+  background-color: #ffffff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+
+.location-btn cover-image {
+  width: 50rpx;
+  height: 50rpx;
+}
+
 .instruction {
   height: 55px;
   width: 55px;

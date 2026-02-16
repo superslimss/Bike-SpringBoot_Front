@@ -39,7 +39,7 @@
 
 <map 
   id="map" 
-  style="width: 100%; height: calc(100vh - 180px)" 
+  style="width: 100%; height: calc(100vh - 100px)" 
   latitude="{{latitude}}" 
   longitude="{{longitude}}" 
   scale="{{scale}}" 
@@ -56,16 +56,12 @@
       <cover-image class="img" src="{{location}}" />
     </cover-view>
   </cover-view>
+
+  <cover-view class="location-btn" bindtap="restore">
+    <cover-image src="/images/center.png"></cover-image>
+  </cover-view>
 </map>
 
-<view class="card-bottom">
-  <view class="card-bottom-button" bindtap="clickButton">
-    <view wx:if="{{polyline.length == 0}}">
-      🏫 {{site_data[category].name}} 有 {{site_data[category].list.length}} 个地点
-    </view>
-    <view wx:if="{{polyline.length != 0}}"> 🧭 路线详情 </view>
-  </view>
-</view>
 
 <mp-dialog title="{{card.name || '详情'}}" show="{{dialogShow_site}}" bindbuttontap="mapmarker_choose" buttons="{{buttons}}">
   <view>
