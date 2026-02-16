@@ -10,7 +10,7 @@ const qqmapsdk = new QQMapWX({
 
 Page({
   data: {
-    // 1. 基础定位：优先读取配置文件中的辽石化坐标
+    // 1. 基础定位：优先读取配置文件中的辽石化坐标， xx
     latitude: map.latitude,
     longitude: map.longitude,
     scale: map.scale,
