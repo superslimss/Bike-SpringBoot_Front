@@ -2,7 +2,7 @@
 import map from '@data/map';
 import media from '@data/media';
 
-// 引入腾讯地图SDK核心类
+// 引入腾讯地图SDK核心类 
 const QQMapWX = require('@libs/qqmap-wx-jssdk.min');
 const qqmapsdk = new QQMapWX({
   key: map.mapKey, 
