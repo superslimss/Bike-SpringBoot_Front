@@ -169,7 +169,7 @@
 .location-btn {
   position: absolute;
   right: 30rpx;
-  bottom: 60rpx; /* 根据你的底部布局调整高度 */
+  bottom: 100rpx; /* 根据你的底部布局调整高度 */
   width: 90rpx;
   height: 90rpx;
   background-color: #ffffff;
