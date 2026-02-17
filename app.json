@@ -6,6 +6,7 @@
         "pages/user/user",
         "pages/user/statement/statement"
     ],
+
     "window": {
         "backgroundTextStyle": "light",
         "navigationBarBackgroundColor": "#ffffff",
@@ -35,7 +36,10 @@
         "weui": true
     },
     "requiredPrivateInfos": [
-        "getLocation"
+        "getLocation",
+        "onLocationChange",
+        "startLocationUpdate"
+        
     ],
     "permission": {
         "scope.userLocation": {

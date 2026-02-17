@@ -2,7 +2,6 @@
 import map from '@data/map';
 import media from '@data/media';
 
-// 引入腾讯地图SDK核心类 
 const QQMapWX = require('@libs/qqmap-wx-jssdk.min');
 const qqmapsdk = new QQMapWX({
   key: map.mapKey, 
@@ -10,62 +9,93 @@ const qqmapsdk = new QQMapWX({
 
 Page({
   data: {
-    // 1. 基础定位：优先读取配置文件中的辽石化坐标， xx
     latitude: map.latitude,
     longitude: map.longitude,
     scale: map.scale,
 
-    // 2. 地标分类属性
     category: 0,
     all_site_data: map.site_data,
     site_data: [],
     Marker3_Activated: media.Marker3_Activated,
 
-    // 3. 单车属性
     bikeIcon: "/images/bike.png", 
     bikeMarkers: [], 
 
-    // 4. 地图显示集合
     markers: [],
     polyline: [],
     
-    // 5. 导航起点与终点
     start: { name: '当前位置', latitude: '', longitude: '' },
     end: { name: '', latitude: '', longitude: '' },
 
-    // 6. 设置手动模拟的经纬度变量
-    myMockLat: 41.857358, 
-    myMockLng: 123.788281,
+    // 【优化点 1】我的实时定位标记底稿
+    myPosIcon: "/images/my_pos.png", 
+    myLocationMarker: null, 
+
+    myMockLat: map.latitude, // 初始为配置坐标
+    myMockLng: map.longitude,
   },
 
   onLoad(options) {
-    // 确保启动时即使网络报错，基础数据也能加载
     this.initStaticSites();
     this.loadBikesFromServer(); 
-    // 延迟500ms确保前面的渲染不冲突
-    setTimeout(() => {
-      this.initUserLocation();
-    }, 500);
-  },
-
-  // --- 在这里插入 getMyMarker 函数 ---
-  getMyMarker() {
-    return {
-      id: 9999,
-      latitude: this.data.myMockLat,
-      longitude: this.data.myMockLng,
-      iconPath: '/images/my_pos.png', 
-      width: 32,
-      height: 32,
-      anchor: { x: 0.5, y: 0.5 },
-      zIndex: 1000,
-      
-    };
+    this.startLocationUpdate();
   },
 
   /**
-   * 初始化校园地标（图书馆、食堂等）
+   * 开启微信实时位置监听
    */
+  startLocationUpdate() {
+    const _this = this;
+    wx.startLocationUpdate({
+      success: () => {
+        console.log("实时定位开启成功");
+        wx.onLocationChange((location) => {
+          // 仅处理位置更新与 Marker 同步
+          _this.handleLocationChange(location);
+
+          // 强制视角跟随（解决 Sensor 调节后视角不动的问题）
+          const mapCtx = wx.createMapContext('map');
+          mapCtx.moveToLocation({
+            latitude: location.latitude,
+            longitude: location.longitude
+          });
+        });
+      },
+      fail: (err) => {
+        console.error("开启实时定位失败", err);
+      }
+    });
+  },
+
+  /**
+   * 【优化点 2】统一处理位置变动，并确保持久化显示
+   */
+  handleLocationChange(res) {
+    // 1. 更新最新的定位标记底稿
+    const newMyMarker = {
+      id: 9999,
+      latitude: res.latitude,
+      longitude: res.longitude,
+      iconPath: this.data.myPosIcon,
+      width: 35,
+      height: 35,
+      zIndex: 1001,
+      anchor: { x: 0.5, y: 0.5 }
+    };
+
+    // 2. 提取当前 markers 中除了定位点以外的其他点（地标和单车）
+    let otherMarkers = this.data.markers.filter(m => m.id !== 9999);
+
+    this.setData({
+      myMockLat: res.latitude,
+      myMockLng: res.longitude,
+      'start.latitude': res.latitude,
+      'start.longitude': res.longitude,
+      myLocationMarker: newMyMarker, // 保存底稿
+      markers: [...otherMarkers, newMyMarker] // 合并渲染
+    });
+  },
+
   initStaticSites() {
     const all_site_data = this.data.all_site_data;
     if (all_site_data && all_site_data.length > 0) {
@@ -73,14 +103,13 @@ Page({
       this.setData({
         site_data: campus.category_list || []
       }, () => {
-        // 初始显示第一个分类
         this.changeCategory({ currentTarget: { id: 0 } });
       });
     }
   },
 
   /**
-   * 切换分类并自动跳转视角
+   * 【优化点 3】切换地址栏分类时，带上保存好的定位底稿
    */
   changeCategory(e) {
     const categoryIndex = parseInt(e.currentTarget.id);
@@ -88,8 +117,6 @@ Page({
     if (!siteData) return;
 
     const site_list = siteData.list || [];
-    
-    // 生成地标 Markers (ID从100开始)
     let staticMarkers = site_list.map((site, index) => ({
       id: index + 100, 
       latitude: site.latitude,
@@ -97,28 +124,25 @@ Page({
       iconPath: this.data.Marker3_Activated,
       width: 30,
       height: 30,
-      callout: {
-        content: " " + site.name + " ",
-        display: 'ALWAYS',
-        padding: 5,
-        borderRadius: 10
-      }
+      callout: { content: " " + site.name + " ", display: 'ALWAYS', padding: 5, borderRadius: 10 }
     }));
+
+    // 合并时，显式检查并加入 myLocationMarker
+    let finalMarkers = [...staticMarkers, ...this.data.bikeMarkers];
+    if (this.data.myLocationMarker) {
+      finalMarkers.push(this.data.myLocationMarker);
+    }
 
     this.setData({
       category: categoryIndex,
-      markers: [...staticMarkers, ...this.data.bikeMarkers, this.getMyMarker()]
+      markers: finalMarkers
     }, () => {
-      // 只有当地标存在时才执行视角缩放
       if (staticMarkers.length > 0) {
         this.includePoints(staticMarkers);
       }
     });
   },
 
-  /**
-   * 从后端加载单车
-   */
   loadBikesFromServer() {
     const _this = this;
     wx.request({
@@ -133,104 +157,46 @@ Page({
             iconPath: _this.data.bikeIcon,
             width: 35,
             height: 35,
-            zIndex: 999,              // 确保单车图层在最上方
-            callout: {
-              content: " 扫码用车 ",
-              display: 'BYCLICK'
-            }
+            zIndex: 999,
+            callout: { content: " 扫码用车 ", display: 'BYCLICK' }
           }));
+
+          // 加载单车后，同样要合并当前的定位点
+          let otherMarkers = _this.data.markers.filter(m => m.id >= 100); 
+          let finalMarkers = [...otherMarkers, ...bikes];
+          if (_this.data.myLocationMarker) {
+            finalMarkers.push(_this.data.myLocationMarker);
+          }
+
           _this.setData({ 
             bikeMarkers: bikes,
-            markers: [..._this.data.markers, ...bikes]
+            markers: finalMarkers
           });
         }
-      },
-      fail(err) {
-        console.warn("后端单车数据获取失败，仅显示静态地标");
       }
     });
   },
 
-  /**
-   * 自动缩放视野
-   */
   includePoints(points) {
     const mapCtx = wx.createMapContext('map');
-    
-    // 如果只有一个点，我们不使用 includePoints，而是直接平移并设置一个舒适的缩放值
     if (points.length === 1) {
       this.setData({
         latitude: points[0].latitude,
         longitude: points[0].longitude,
-        scale: 17 // 17 是一个比较舒适的近距离观察比例，不会像 20 那么夸张
+        scale: 17
       });
     } else {
-      // 如果有多个点（如“学院”分类），则使用自动缩放
       mapCtx.includePoints({
-        padding: [150, 100, 100, 100], // 增加边距，让视野更开阔
-        points: points,
-        success: () => {
-          // 这里的回调可以确保在缩放完成后执行
-          console.log("多点视野跳转成功");
-        }
+        padding: [150, 100, 100, 100],
+        points: points
       });
     }
   },
-   /**
-   * 用户坐标模拟
-   */
-  initUserLocation() {
-    // wx.getLocation({
-    //   type: 'gcj02',
-    //   success: (res) => {
-    //     this.setData({
-    //       'start.latitude': res.latitude,
-    //       'start.longitude': res.longitude
-    //     });
-    //   }
-    // });
-    this.setData({
-      'start.latitude': this.data.myMockLat,
-      'start.longitude': this.data.myMockLng
-    });
-    
-    // 初始化一个代表“我”的 Marker，让地图上能看到小蓝点
-  // 2. 初始化 Marker（彻底删除 callout 属性）
-    const myMarker = {
-      id: 9999,
-      latitude: this.data.myMockLat,
-      longitude: this.data.myMockLng,
-      iconPath: '/images/my_pos.png', 
-      width: 32,
-      height: 32,
-      anchor: { x: 0.5, y: 0.5 },
-      zIndex: 1000, // 赋予最高层级，确保不被地标压住
 
-      callout: {
-        content: '我的位置',
-        display: 'ALWAYS',
-        padding: 4,          // 缩小内边距，让边框贴近文字
-        borderRadius: 12,    // 适中的圆角，看起来既圆润又不突兀
-        fontSize: 12,        // 减小字号，显得更精致
-        color: '#000000',
-        bgColor: '#ffffff',  // 建议改用蓝色背景配白字，视觉上体积感更小
-        textAlign: 'center',
-        borderWidth: 0
-      }
-
-    };
-
-  // 将“我”的标记加入 markers 数组
-  this.setData({
-    markers: [...this.data.markers, myMarker]
-  });
-  },
-
-  /**
-   * 点击交互：区分单车和地标
-   */
   markertap(e) {
     const markerId = e.markerId;
+    if (markerId === 9999) return; 
+
     if (markerId < 100) {
       wx.showModal({
         title: '预约单车',
@@ -283,17 +249,20 @@ Page({
 
   restore() {
     const mapCtx = wx.createMapContext('map');
-    mapCtx.moveToLocation({
-      latitude: this.data.myMockLat,
-      longitude: this.data.myMockLng,
-      success: () => {
-        wx.showToast({
-          title: '已回到我的位置',
-          icon: 'none',
-          duration: 1000
-        });
-      }
-    });
-    this.loadBikesFromServer();
+    if (this.data.myMockLat && this.data.myMockLng)
+    {
+      mapCtx.moveToLocation({
+          latitude: this.data.myMockLat,
+          longitude: this.data.myMockLng,
+            success: () => {
+              wx.showToast({ title: '已回到我的位置', icon: 'none' });
+              this.setData({
+                latitude: this.data.myMockLat,
+                longitude: this.data.myMockLng
+              });
+            }
+          });
+    }
+    
   }
 });
