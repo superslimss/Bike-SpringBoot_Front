@@ -48,6 +48,22 @@
   show-location="{{false}}" 
   bindmarkertap="markertap"
 >
+
+<view class="riding-panel" wx:if="{{isRiding}}">
+  <view class="panel-header">
+    <text class="status-dot"></text>
+    <text>正在骑行</text>
+  </view>
+  
+  <view class="time-box">
+    <text class="time-num">{{ridingTime}}</text>
+    <text class="time-label">骑行时间</text>
+  </view>
+
+  <view class="btn-group">
+    <button class="btn-stop" bindtap="finishOrder">结束骑行</button>
+  </view>
+</view>
   <cover-view class="map_right_card" style="margin-top: calc(100vh - 375px)">
     <cover-view class="location" wx:if="{{polyline.length != 0}}" bindtap="restore">
       <cover-image class="img" src="{{restore}}" />
