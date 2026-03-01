@@ -82,7 +82,7 @@
 }
 
 .card-top-right-button {
-  background-color: #73a5d6;
+  background-color: #0062ff;
   color: white;
   width: 70px;
   height: 40px;

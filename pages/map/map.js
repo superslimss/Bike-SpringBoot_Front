@@ -27,23 +27,57 @@ Page({
     start: { name: '当前位置', latitude: '', longitude: '' },
     end: { name: '', latitude: '', longitude: '' },
 
-    // 【优化点 1】我的实时定位标记底稿
+    // 我的实时定位标记底稿
     myPosIcon: "/images/my_pos.png",
     myLocationMarker: null,
 
-    myMockLat: map.latitude, // 初始为配置坐标
+    myMockLat: map.latitude,
     myMockLng: map.longitude,
 
-    // ... 其他变量
-    isRiding: false, // 初始状态：未骑行
-    ridingTime: '00:00', // 骑行时间显示
-    currentOrderId: null, // 存储当前订单ID，方便还车
+    isRiding: false,
+    ridingTime: '00:00',
+    currentOrderId: null,
+    ridingBikeId: null,
+
+    endMarkerId: 8888,
+    endMarker: null,
   },
 
-  onLoad(options) {
+  onLoad() {
     this.initStaticSites();
     this.loadBikesFromServer();
     this.startLocationUpdate();
+  },
+
+  /**
+   * ✅ 点地图任意位置：设置为终点 end
+   */
+  onMapTap(e) {
+    const { latitude, longitude } = e.detail || {};
+    if (latitude == null || longitude == null) return;
+  
+    // 终点 marker
+    const endMarker = {
+      id: this.data.endMarkerId,      // 固定 id，方便每次替换
+      latitude,
+      longitude,
+      iconPath: '/images/end.png',    // ✅ 你自己准备一个终点图标；没有就先用现成的
+      width: 32,
+      height: 32,
+      zIndex: 1000,
+      anchor: { x: 0.5, y: 1.0 }      // 底部对齐点位
+    };
+  
+    // 把 markers 里旧的终点 marker 去掉，再加新的
+    const markersWithoutEnd = this.data.markers.filter(m => Number(m.id) !== this.data.endMarkerId);
+  
+    this.setData({
+      end: { name: '地图选点', latitude, longitude },
+      endMarker,
+      markers: [...markersWithoutEnd, endMarker]
+    });
+  
+    wx.showToast({ title: '终点已设置', icon: 'none' });
   },
 
   /**
@@ -55,10 +89,9 @@ Page({
       success: () => {
         console.log("实时定位开启成功");
         wx.onLocationChange((location) => {
-          // 仅处理位置更新与 Marker 同步
           _this.handleLocationChange(location);
 
-          // 强制视角跟随（解决 Sensor 调节后视角不动的问题）
+          // 视角跟随（保留你原逻辑）
           const mapCtx = wx.createMapContext('map');
           mapCtx.moveToLocation({
             latitude: location.latitude,
@@ -73,10 +106,9 @@ Page({
   },
 
   /**
-   * 【优化点 2】统一处理位置变动，并确保持久化显示
+   * 统一处理位置变动
    */
   handleLocationChange(res) {
-    // 1. 更新最新的定位标记底稿
     const newMyMarker = {
       id: 9999,
       latitude: res.latitude,
@@ -88,7 +120,6 @@ Page({
       anchor: { x: 0.5, y: 0.5 }
     };
 
-    // 2. 提取当前 markers 中除了定位点以外的其他点（地标和单车）
     let otherMarkers = this.data.markers.filter(m => m.id !== 9999);
 
     this.setData({
@@ -96,8 +127,8 @@ Page({
       myMockLng: res.longitude,
       'start.latitude': res.latitude,
       'start.longitude': res.longitude,
-      myLocationMarker: newMyMarker, // 保存底稿
-      markers: [...otherMarkers, newMyMarker] // 合并渲染
+      myLocationMarker: newMyMarker,
+      markers: [...otherMarkers, newMyMarker]
     });
   },
 
@@ -114,7 +145,7 @@ Page({
   },
 
   /**
-   * 【优化点 3】切换地址栏分类时，带上保存好的定位底稿
+   * 切换快捷地标分类
    */
   changeCategory(e) {
     const categoryIndex = parseInt(e.currentTarget.id);
@@ -132,7 +163,6 @@ Page({
       callout: { content: " " + site.name + " ", display: 'ALWAYS', padding: 5, borderRadius: 10 }
     }));
 
-    // 合并时，显式检查并加入 myLocationMarker
     let finalMarkers = [...staticMarkers, ...this.data.bikeMarkers];
     if (this.data.myLocationMarker) {
       finalMarkers.push(this.data.myLocationMarker);
@@ -148,6 +178,9 @@ Page({
     });
   },
 
+  /**
+   * 从后端加载单车 marker
+   */
   loadBikesFromServer() {
     const _this = this;
     wx.request({
@@ -166,11 +199,10 @@ Page({
             callout: { content: " 扫码用车 ", display: 'BYCLICK' }
           }));
 
-          // 加载单车后，同样要合并当前的定位点
-          let otherMarkers = _this.data.markers.filter(m => m.id >= 100);
+          let otherMarkers = _this.data.markers.filter(m => m.id >= 100 || m.id === 9999);
           let finalMarkers = [...otherMarkers, ...bikes];
           if (_this.data.myLocationMarker) {
-            finalMarkers.push(_this.data.myLocationMarker);
+            if (!finalMarkers.find(m => m.id === 9999)) finalMarkers.push(_this.data.myLocationMarker);
           }
 
           _this.setData({
@@ -198,32 +230,36 @@ Page({
     }
   },
 
+  /**
+   * marker 点击：
+   * - 地标(>=100)：不处理（终点用点地图任意位置）
+   * - 单车(<100)：开锁
+   */
   markertap(e) {
-    const markerId = e.markerId;
-    if (markerId === 9999) return; // 过滤掉“我的位置”
+    const markerId = Number(e.markerId);
+    if (markerId === 9999) return;
+    if (markerId >= 100) return;
 
-    if (markerId < 100) { // 假设单车 ID 小于 100
-      wx.showModal({
-        title: '开锁确认',
-        content: '确认开启这辆单车并开始计费吗？',
-        success: (res) => {
-          if (res.confirm) {
-            this.sendUnlockRequest(markerId);
-          }
+    wx.showModal({
+      title: '开锁确认',
+      content: '确认开启这辆单车并开始计费吗？',
+      success: (res) => {
+        if (res.confirm) {
+          this.sendUnlockRequest(markerId);
         }
-      });
-    }
+      }
+    });
   },
 
   sendUnlockRequest(bikeId) {
     wx.showLoading({ title: '正在开锁' });
 
     wx.request({
-      url: 'http://localhost:8080/api/orders/create', // 你的 Spring Boot 地址
+      url: 'http://localhost:8080/api/orders/create',
       method: 'POST',
       data: {
         bikeId: bikeId,
-        userId: 1, // 模拟当前登录用户 ID
+        userId: 1,
         startLat: this.data.myMockLat,
         startLng: this.data.myMockLng
       },
@@ -231,19 +267,17 @@ Page({
         wx.hideLoading();
         if (res.statusCode === 200) {
           wx.showToast({ title: '开锁成功', icon: 'success' });
-          console.log("订单信息已存入数据库:", res.data);
 
-          const currentBikeId = Number(bikeId); // 刚才开锁的单车ID
-          // 过滤掉当前这辆车的图标
+          const currentBikeId = Number(bikeId);
           let filteredMarkers = this.data.markers.filter(marker => Number(marker.id) !== currentBikeId);
+
           this.setData({
             isRiding: true,
-            currentOrderId: res.data.id, // 保存后端返回的订单ID
-            ridingBikeId: currentBikeId, // 记录下这辆车，还车时要放回来
+            currentOrderId: res.data.id,
+            ridingBikeId: currentBikeId,
             markers: filteredMarkers
           });
 
-          // 可选：开始计时器
           this.startTimer();
         }
       },
@@ -265,8 +299,7 @@ Page({
 
           const endLat = this.data.myMockLat;
           const endLng = this.data.myMockLng;
-          // 确保 ID 是数字
-          const bId = Number(this.data.ridingBikeId); 
+          const bId = Number(this.data.ridingBikeId);
 
           wx.request({
             url: 'http://localhost:8080/api/orders/finish',
@@ -282,13 +315,10 @@ Page({
               if (res.statusCode === 200) {
                 this.stopTimer();
 
-                // 1. 获取当前 markers 并进行深度清理
-                // 强制将 marker.id 转为数字再对比，确保彻底删掉残留的旧图标
                 let markers = this.data.markers.filter(m => Number(m.id) !== bId);
 
-                // 2. 添加新位置的单车
                 markers.push({
-                  id: bId, // 👈 必须是 Number
+                  id: bId,
                   latitude: endLat,
                   longitude: endLng,
                   iconPath: '/images/bike.png',
@@ -301,7 +331,7 @@ Page({
                   ridingTime: '00:00',
                   currentOrderId: null,
                   ridingBikeId: null,
-                  markers: markers // 👈 重新渲染地图
+                  markers: markers
                 });
 
                 wx.showToast({ title: '还车成功', icon: 'success' });
@@ -312,10 +342,9 @@ Page({
       }
     });
   },
-  // 1. 开始计时 (确保你在 unlockBike 成功后调用它)
+
   startTimer() {
     let seconds = 0;
-    // 如果已有计时器先清除，防止重叠
     if (this.timer) clearInterval(this.timer);
 
     this.timer = setInterval(() => {
@@ -330,20 +359,30 @@ Page({
     }, 1000);
   },
 
-  // 2. 停止计时 (这是你刚才报错缺失的函数)
   stopTimer() {
     if (this.timer) {
       clearInterval(this.timer);
-      this.timer = null; // 清空变量
-      console.log("计时器已停止");
+      this.timer = null;
     }
   },
 
-
+  /**
+   * ✅ 腾讯骑行路线
+   */
   formSubmit() {
     const { start, end } = this.data;
-    if (!end.latitude) return;
+
+    if (!end.latitude) {
+      wx.showToast({ title: '请先点地图选择终点', icon: 'none' });
+      return;
+    }
+    if (!start.latitude) {
+      wx.showToast({ title: '定位中，请稍后再试', icon: 'none' });
+      return;
+    }
+
     wx.showLoading({ title: '路线规划中' });
+
     qqmapsdk.direction({
       mode: 'bicycling',
       from: `${start.latitude},${start.longitude}`,
@@ -351,18 +390,53 @@ Page({
       success: (res) => {
         const route = res.result.routes[0];
         const coors = route.polyline;
+
         const pl = [];
         const kr = 1000000;
         for (let i = 2; i < coors.length; i++) coors[i] = Number(coors[i - 2]) + Number(coors[i]) / kr;
         for (let i = 0; i < coors.length; i += 2) pl.push({ latitude: coors[i], longitude: coors[i + 1] });
-        this.setData({ polyline: [{ points: pl, color: '#007AFF', width: 6 }] });
+
+        this.setData({
+          polyline: [{ points: pl, color: '#007AFF', width: 6 }]
+        });
+
         wx.hideLoading();
       },
-      fail: () => {
+      fail: (err) => {
         wx.hideLoading();
+        console.error('规划失败', err);
         wx.showToast({ title: '规划失败', icon: 'none' });
       }
     });
+  },
+
+  /**
+   * 你的 wxml input 绑定了 tosearch：先给提示避免报错
+   */
+  tosearch() {
+    wx.showToast({ title: '请直接点地图选择终点', icon: 'none' });
+  },
+
+  /**
+   * 交换按钮：这里给最小实现（可删）
+   */
+  exchange() {
+    const { start, end } = this.data;
+    if (!end.latitude) {
+      wx.showToast({ title: '请先选择终点', icon: 'none' });
+      return;
+    }
+    this.setData({
+      start: { ...end, name: '起点' },
+      end: { ...start, name: '终点' }
+    });
+  },
+
+  /**
+   * 右侧定位按钮
+   */
+  location() {
+    this.restore();
   },
 
   restore() {
@@ -372,7 +446,6 @@ Page({
         latitude: this.data.myMockLat,
         longitude: this.data.myMockLng,
         success: () => {
-          wx.showToast({ title: '已回到我的位置', icon: 'none' });
           this.setData({
             latitude: this.data.myMockLat,
             longitude: this.data.myMockLng
@@ -380,6 +453,7 @@ Page({
         }
       });
     }
+  },
 
-  }
+  mapmarker_choose() {}
 });

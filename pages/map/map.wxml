@@ -19,22 +19,16 @@
   </view>
 </view>
 
-<view class="relative" wx:if="{{polyline.length == 0}}">
+<!-- ✅ 快捷地标分类栏：始终显示（不再根据 polyline 切换） -->
+<view class="relative">
   <scroll-view style="flex: 1; min-width: 0" scroll-x="true" scroll-with-animation="true">
     <view class="card-bottom-category" style="width: {{site_data.length*75}}px;">
-      <view class="card-bottom-category-label {{index == category ? 'choose' : ''}}" wx:for="{{site_data}}" wx:key="id" id="{{index}}" bindtap="changeCategory">
+      <view class="card-bottom-category-label {{index == category ? 'choose' : ''}}"
+            wx:for="{{site_data}}" wx:key="id" id="{{index}}" bindtap="changeCategory">
         {{item.name}}
       </view>
     </view>
   </scroll-view>
-</view>
-
-<view class="relative" wx:else>
-  <view class="relative-mode" wx:for="{{['walking', 'bicycling', 'driving']}}" wx:key="*this">
-    <view class="mode {{mode == item ? 'choose' : ''}}" data-choose="{{item}}" bindtap="modechoose">
-      {{item == 'walking' ? '步行' : (item == 'bicycling' ? '骑行' : '驾车')}}
-    </view>
-  </view>
 </view>
 
 <map 
@@ -47,23 +41,25 @@
   polyline="{{polyline}}" 
   show-location="{{false}}" 
   bindmarkertap="markertap"
+  bindtap="onMapTap"
 >
 
-<view class="riding-panel" wx:if="{{isRiding}}">
-  <view class="panel-header">
-    <text class="status-dot"></text>
-    <text>正在骑行</text>
-  </view>
-  
-  <view class="time-box">
-    <text class="time-num">{{ridingTime}}</text>
-    <text class="time-label">骑行时间</text>
+  <view class="riding-panel" wx:if="{{isRiding}}">
+    <view class="panel-header">
+      <text class="status-dot"></text>
+      <text>正在骑行</text>
+    </view>
+    
+    <view class="time-box">
+      <text class="time-num">{{ridingTime}}</text>
+      <text class="time-label">骑行时间</text>
+    </view>
+
+    <view class="btn-group">
+      <button class="btn-stop" bindtap="finishOrder">结束骑行</button>
+    </view>
   </view>
 
-  <view class="btn-group">
-    <button class="btn-stop" bindtap="finishOrder">结束骑行</button>
-  </view>
-</view>
   <cover-view class="map_right_card" style="margin-top: calc(100vh - 375px)">
     <cover-view class="location" wx:if="{{polyline.length != 0}}" bindtap="restore">
       <cover-image class="img" src="{{restore}}" />
@@ -76,8 +72,8 @@
   <cover-view class="location-btn" bindtap="restore">
     <cover-image src="/images/center.png"></cover-image>
   </cover-view>
-</map>
 
+</map>
 
 <mp-dialog title="{{card.name || '详情'}}" show="{{dialogShow_site}}" bindbuttontap="mapmarker_choose" buttons="{{buttons}}">
   <view>
