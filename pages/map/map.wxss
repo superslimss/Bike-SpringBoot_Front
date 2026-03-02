@@ -199,7 +199,7 @@ page {
 .location-btn {
   position: absolute;
   right: 30rpx;
-  bottom: 100rpx;
+  bottom: 220rpx;
   width: 90rpx;
   height: 90rpx;
   background-color: #ffffff;
@@ -353,7 +353,7 @@ page {
 .reset-btn {
   position: absolute;
   right: 30rpx;
-  bottom: 220rpx; /* 比 location-btn 的 100rpx 高一些 */
+  bottom: 340rpx; /* 比 location-btn 的 100rpx 高一些 */
   width: 90rpx;
   height: 90rpx;
   background-color: #ffffff;
@@ -368,4 +368,35 @@ page {
 .reset-btn cover-image {
   width: 50rpx;
   height: 50rpx;
+}
+
+/* 底部按钮容器 */
+.bottom-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 20rpx;
+  padding: 0 30rpx;
+  z-index: 9999;
+}
+
+/* 默认：扫码用车 */
+.scan-btn {
+  height: 100rpx;
+  border-radius: 60rpx;
+  background: #f6c945;     /* 黄 */
+  color: #111;
+  font-size: 36rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10rpx 30rpx rgba(0,0,0,0.15);
+}
+
+/* 取消状态：变成“取消扫码”（更像警示） */
+.scan-btn-cancel {
+  background: #ffffff;
+  border: 2rpx solid #ff3b30;
+  color: #ff3b30;
 }

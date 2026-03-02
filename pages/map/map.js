@@ -6,6 +6,8 @@ const QQMapWX = require('@libs/qqmap-wx-jssdk.min');
 const qqmapsdk = new QQMapWX({
   key: map.mapKey,
 });
+const campusGraph = require('../../data/campusGraph');
+const { aStarRoute } = require('../../utils/route/localAStar');
 
 Page({
   data: {
@@ -55,6 +57,10 @@ Page({
     endMarkerId: 8888,
     startMarker: null,
     endMarker: null,
+
+    isUnlockMode: false, // 是否处于“扫码开锁/待选车”模式
+
+    useLocalRoute: true, // true=本地A*，false=腾讯
   },
 
   onLoad() {
@@ -341,6 +347,22 @@ Page({
       });
     }
   },
+  toggleUnlockMode() {
+    // 正在骑行就不允许进入开锁模式
+    if (this.data.isRiding) {
+      wx.showToast({ title: '骑行中无法扫码开锁', icon: 'none' });
+      return;
+    }
+  
+    const next = !this.data.isUnlockMode;
+    this.setData({ isUnlockMode: next });
+  
+    if (next) {
+      wx.showToast({ title: '请点击单车开锁', icon: 'none' });
+    } else {
+      wx.showToast({ title: '已取消扫码开锁', icon: 'none' });
+    }
+  },
 
   /**
    * marker 点击：
@@ -348,19 +370,27 @@ Page({
    * - 单车(<100)：开锁
    */
   markertap(e) {
-    const markerId = Number(e.markerId);
-    if (markerId === 9999) return;
-    if (markerId >= 100) return;
-
-    wx.showModal({
-      title: '开锁确认',
-      content: '确认开启这辆单车并开始计费吗？',
-      success: (res) => {
-        if (res.confirm) {
-          this.sendUnlockRequest(markerId);
-        }
+    const markerId = e.markerId;
+    if (markerId === 9999) return; // 我的定位点不处理
+  
+    // 只处理单车点击（你原来假设单车 id < 100）
+    if (markerId < 100) {
+      // ✅ 必须先进入扫码开锁模式，才能点车开锁
+      if (!this.data.isUnlockMode) {
+        wx.showToast({ title: '请先点击“扫码用车”', icon: 'none' });
+        return;
       }
-    });
+  
+      wx.showModal({
+        title: '开锁确认',
+        content: '确认开启这辆单车并开始计费吗？',
+        success: (res) => {
+          if (res.confirm) {
+            this.sendUnlockRequest(markerId);
+          }
+        }
+      });
+    }
   },
 
   sendUnlockRequest(bikeId) {
@@ -390,6 +420,7 @@ Page({
 
           this.setData({
             isRiding: true,
+            isUnlockMode: false,     // ✅ 开锁成功自动退出扫码模式
             currentOrderId: res.data.id,
             ridingBikeId: currentBikeId,
             markers: filteredMarkers
@@ -498,30 +529,53 @@ Page({
    * ✅ 腾讯骑行路线
    */
   formSubmit() {
-    const {
-      start,
-      end
-    } = this.data;
-
+    const { start, end } = this.data;
+  
     if (!end.latitude) {
-      wx.showToast({
-        title: '请先点地图选择终点',
-        icon: 'none'
-      });
+      wx.showToast({ title: '请先点地图选择终点', icon: 'none' });
       return;
     }
     if (!start.latitude) {
-      wx.showToast({
-        title: '定位中，请稍后再试',
-        icon: 'none'
-      });
+      wx.showToast({ title: '定位中，请稍后再试', icon: 'none' });
       return;
     }
-
-    wx.showLoading({
-      title: '路线规划中'
-    });
-
+  
+    wx.showLoading({ title: '路线规划中' });
+  
+    // ✅ 1) 走本地 A*（优先）
+    if (this.data.useLocalRoute) {
+      try {
+        const result = aStarRoute(
+          campusGraph,
+          { lat: Number(start.latitude), lng: Number(start.longitude) },
+          { lat: Number(end.latitude), lng: Number(end.longitude) }
+        );
+  
+        wx.hideLoading();
+  
+        if (!result.points || result.points.length < 2) {
+          wx.showToast({ title: '本地路径未找到（请检查校园图是否连通）', icon: 'none' });
+          return;
+        }
+  
+        this.setData({
+          polyline: [{
+            points: result.points,
+            color: '#007AFF',
+            width: 6
+          }]
+        });
+  
+        return; // ✅ 本地成功就结束
+      } catch (err) {
+        wx.hideLoading();
+        console.error('本地A*规划失败', err);
+        wx.showToast({ title: '本地规划失败，已切回腾讯', icon: 'none' });
+        // 本地失败就继续往下走腾讯（不 return）
+      }
+    }
+  
+    // ✅ 2) 走腾讯路线（兜底）
     qqmapsdk.direction({
       mode: 'bicycling',
       from: `${start.latitude},${start.longitude}`,
@@ -529,15 +583,16 @@ Page({
       success: (res) => {
         const route = res.result.routes[0];
         const coors = route.polyline;
-
+  
         const pl = [];
         const kr = 1000000;
-        for (let i = 2; i < coors.length; i++) coors[i] = Number(coors[i - 2]) + Number(coors[i]) / kr;
-        for (let i = 0; i < coors.length; i += 2) pl.push({
-          latitude: coors[i],
-          longitude: coors[i + 1]
-        });
-
+        for (let i = 2; i < coors.length; i++) {
+          coors[i] = Number(coors[i - 2]) + Number(coors[i]) / kr;
+        }
+        for (let i = 0; i < coors.length; i += 2) {
+          pl.push({ latitude: coors[i], longitude: coors[i + 1] });
+        }
+  
         this.setData({
           polyline: [{
             points: pl,
@@ -545,16 +600,13 @@ Page({
             width: 6
           }]
         });
-
+  
         wx.hideLoading();
       },
       fail: (err) => {
         wx.hideLoading();
-        console.error('规划失败', err);
-        wx.showToast({
-          title: '规划失败',
-          icon: 'none'
-        });
+        console.error('腾讯规划失败', err);
+        wx.showToast({ title: '规划失败', icon: 'none' });
       }
     });
   },

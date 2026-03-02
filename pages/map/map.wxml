@@ -83,6 +83,14 @@
 
 </map>
 
+<!-- 底部扫码用车按钮（非骑行状态才显示） -->
+<view class="bottom-bar" wx:if="{{!isRiding}}">
+  <view class="scan-btn {{isUnlockMode ? 'scan-btn-cancel' : ''}}"
+        bindtap="toggleUnlockMode">
+    {{isUnlockMode ? '取消扫码' : '扫码用车'}}
+  </view>
+</view>
+
 <mp-dialog title="{{card.name || '详情'}}" show="{{dialogShow_site}}" bindbuttontap="mapmarker_choose" buttons="{{buttons}}">
   <view>
     <image wx:if="{{card.img}}" mode="heightFix" style="height: 270rpx" src="{{card.img}}"></image>
