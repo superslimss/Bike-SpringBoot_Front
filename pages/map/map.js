@@ -9,6 +9,65 @@ const qqmapsdk = new QQMapWX({
 const campusGraph = require('../../data/campusGraph');
 const { aStarRoute } = require('../../utils/route/localAStar');
 
+function isAfterClassTime() {
+  const now = new Date();
+  const t = now.getHours() * 60 + now.getMinutes();
+  const ranges = [
+    [11 * 60 + 30, 12 * 60 + 10],
+    [15 * 60 + 0, 16 * 60 + 0],   // 新增下午三点到四点
+    [16 * 60 + 0, 17 * 60 + 0],   // ✅ 新增：16:00 - 17:00
+    [17 * 60 + 0, 17 * 60 + 60],
+    [20 * 60 + 30, 21 * 60 + 10],
+  ];
+  return ranges.some(([a, b]) => t >= a && t <= b);
+}
+
+function toLLPoints(points) {
+  return points.map(p => ({ latitude: p.latitude, longitude: p.longitude }));
+}
+
+function calcDistanceMeters(points) {
+  if (!points || points.length < 2) return 0;
+
+  const R = 6371000;
+  const toRad = d => (d * Math.PI) / 180;
+
+  let sum = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+
+    const dLat = toRad(b.latitude - a.latitude);
+    const dLng = toRad(b.longitude - a.longitude);
+    const la1 = toRad(a.latitude);
+    const la2 = toRad(b.latitude);
+
+    const x =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+
+    sum += 2 * R * Math.asin(Math.sqrt(x));
+  }
+  return sum;
+}
+
+// 速度：你可以按实际改（骑行一般 3~6m/s；校园慢点 3.5~4.5）
+function estimateMinutesBySpeed(distanceMeters, speedMps = 4.0) {
+  if (!distanceMeters) return 0;
+  const sec = distanceMeters / speedMps;
+  return sec / 60;
+}
+
+function fmtDistance(m) {
+  if (m < 1000) return `${Math.round(m)}m`;
+  return `${(m / 1000).toFixed(2)}km`;
+}
+
+function fmtMinutes(min) {
+  if (min < 1) return `约1分钟`;
+  return `约${Math.round(min)}分钟`;
+}
+
 Page({
   data: {
     latitude: map.latitude,
@@ -61,6 +120,14 @@ Page({
     isUnlockMode: false, // 是否处于“扫码开锁/待选车”模式
 
     useLocalRoute: true, // true=本地A*，false=腾讯
+
+    routeDistanceText: '',
+    routeTimeText: '',
+    routeExtraText: '',
+
+    travelMode: 'bike',      // 'walk' | 'bike'
+speedWalk: 1.3,          // m/s 步行速度（约 4.7km/h）
+speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
   },
 
   onLoad() {
@@ -70,19 +137,30 @@ Page({
   },
   startPick(e) {
     const type = e.currentTarget.dataset.type;
-  
+
     if (this.data.pickMode === type) {
       // 再点一次取消
       this.setData({ pickMode: null });
       wx.showToast({ title: '已取消选点', icon: 'none' });
       return;
     }
-  
+
     this.setData({ pickMode: type });
-  
+
     wx.showToast({
       title: type === 'start' ? '请选择起点' : '请选择终点',
       icon: 'none'
+    });
+  },
+  resetRouteUI() {
+    this.setData({
+      polyline: [],
+      routeDistanceText: '',
+      routeTimeText: '',
+      routeExtraText: '',
+
+      _fastRoutePoints: [],
+      _jamRoutePoints: []
     });
   },
 
@@ -172,6 +250,43 @@ Page({
       });
       return;
     }
+  },
+  onModeTap(e) {
+    const mode = e.currentTarget.dataset.mode; // 'walk' or 'bike'
+    if (!mode) return;
+  
+    this.setData({ travelMode: mode }, () => {
+      // 如果已经规划过路线，切换模式时直接刷新时间显示
+      this.updateRouteTimeCard();
+    });
+  },
+  
+  updateRouteTimeCard() {
+    const { travelMode, speedWalk, speedBike, _fastRoutePoints, _jamRoutePoints } = this.data;
+  
+    if (!_fastRoutePoints || _fastRoutePoints.length < 2) return;
+  
+    const speed = travelMode === 'walk' ? speedWalk : speedBike;
+  
+    const fastDist = calcDistanceMeters(_fastRoutePoints);
+    const fastMin = estimateMinutesBySpeed(fastDist, speed);
+  
+    let extraText = '';
+    if (_jamRoutePoints && _jamRoutePoints.length >= 2) {
+      const jamDist = calcDistanceMeters(_jamRoutePoints);
+      const jamMin = estimateMinutesBySpeed(jamDist, speed);
+      const diff = jamMin - fastMin;
+  
+      if (diff > 0.5) extraText = `红线预计多花 ${Math.round(diff)} 分钟`;
+      else if (diff < -0.5) extraText = `红线反而快 ${Math.round(-diff)} 分钟（检查权重/路网）`;
+      else extraText = `两条路线耗时接近`;
+    }
+  
+    this.setData({
+      routeDistanceText: `预计距离：${fmtDistance(fastDist)}`,
+      routeTimeText: `预计时间：${fmtMinutes(fastMin)}（${travelMode === 'walk' ? '步行' : '骑行'}）`,
+      routeExtraText: extraText
+    });
   },
 
   /**
@@ -353,10 +468,10 @@ Page({
       wx.showToast({ title: '骑行中无法扫码开锁', icon: 'none' });
       return;
     }
-  
+
     const next = !this.data.isUnlockMode;
     this.setData({ isUnlockMode: next });
-  
+
     if (next) {
       wx.showToast({ title: '请点击单车开锁', icon: 'none' });
     } else {
@@ -372,7 +487,7 @@ Page({
   markertap(e) {
     const markerId = e.markerId;
     if (markerId === 9999) return; // 我的定位点不处理
-  
+
     // 只处理单车点击（你原来假设单车 id < 100）
     if (markerId < 100) {
       // ✅ 必须先进入扫码开锁模式，才能点车开锁
@@ -380,7 +495,7 @@ Page({
         wx.showToast({ title: '请先点击“扫码用车”', icon: 'none' });
         return;
       }
-  
+
       wx.showModal({
         title: '开锁确认',
         content: '确认开启这辆单车并开始计费吗？',
@@ -532,7 +647,7 @@ Page({
     const { start, end } = this.data;
   
     if (!end.latitude) {
-      wx.showToast({ title: '请先点地图选择终点', icon: 'none' });
+      wx.showToast({ title: '请先选择终点', icon: 'none' });
       return;
     }
     if (!start.latitude) {
@@ -542,73 +657,92 @@ Page({
   
     wx.showLoading({ title: '路线规划中' });
   
-    // ✅ 1) 走本地 A*（优先）
-    if (this.data.useLocalRoute) {
-      try {
-        const result = aStarRoute(
-          campusGraph,
-          { lat: Number(start.latitude), lng: Number(start.longitude) },
-          { lat: Number(end.latitude), lng: Number(end.longitude) }
-        );
+    try {
+      // 蓝色：考虑拥挤（推荐）
+      const fast = aStarRoute(
+        campusGraph,
+        { lat: start.latitude, lng: start.longitude },
+        { lat: end.latitude, lng: end.longitude },
+        { useJam: true }
+      );
   
+      // 红色：忽略拥挤（对比）
+      const jam = aStarRoute(
+        campusGraph,
+        { lat: start.latitude, lng: start.longitude },
+        { lat: end.latitude, lng: end.longitude },
+        { useJam: false }
+      );
+  
+      if (!fast.points || fast.points.length < 2) {
         wx.hideLoading();
-  
-        if (!result.points || result.points.length < 2) {
-          wx.showToast({ title: '本地路径未找到（请检查校园图是否连通）', icon: 'none' });
-          return;
-        }
-  
-        this.setData({
-          polyline: [{
-            points: result.points,
-            color: '#007AFF',
-            width: 6
-          }]
-        });
-  
-        return; // ✅ 本地成功就结束
-      } catch (err) {
-        wx.hideLoading();
-        console.error('本地A*规划失败', err);
-        wx.showToast({ title: '本地规划失败，已切回腾讯', icon: 'none' });
-        // 本地失败就继续往下走腾讯（不 return）
+        wx.showToast({ title: '未找到可用路线', icon: 'none' });
+        return;
       }
+  
+      // 距离/时间（蓝线用“推荐”）
+      const fastDist = calcDistanceMeters(fast.points);
+      const fastMin = estimateMinutesBySpeed(fastDist, 4.0);
+  
+      // 红线对比（如果存在）
+      let extraText = '';
+      let showRed = false;
+  
+      if (jam.points && jam.points.length >= 2) {
+        // 判断两条路线是否完全一样
+        const same =
+          jam.points.length === fast.points.length &&
+          jam.points.every((p, i) =>
+            Math.abs(p.latitude - fast.points[i].latitude) < 1e-7 &&
+            Math.abs(p.longitude - fast.points[i].longitude) < 1e-7
+          );
+  
+        if (!same) {
+          showRed = true;
+          const jamDist = calcDistanceMeters(jam.points);
+          const jamMin = estimateMinutesBySpeed(jamDist, 4.0);
+          const diff = jamMin - fastMin;
+  
+          if (diff > 0.5) {
+            extraText = `红线预计多花 ${Math.round(diff)} 分钟`;
+          } else if (diff < -0.5) {
+            // 极少见：红线更快（说明拥挤惩罚过大/路网问题）
+            extraText = `红线反而快 ${Math.round(-diff)} 分钟（检查权重/路网）`;
+          } else {
+            extraText = `两条路线耗时接近`;
+          }
+        }
+      }
+  
+      const polylines = [
+        { points: fast.points, color: '#007AFF', width: 6 }
+      ];
+  
+      if (showRed) {
+        polylines.push({
+          points: jam.points,
+          color: '#FF0000',
+          width: 6,
+          dottedLine: true
+        });
+      }
+  
+      this.setData({
+        polyline: polylines,
+      
+        // ✅ 缓存两条路线，用于切换步行/骑行时立刻重算时间
+        _fastRoutePoints: fast.points,
+        _jamRoutePoints: (showRed ? jam.points : [])
+      }, () => {
+        this.updateRouteTimeCard(); // ✅ 按当前 travelMode 刷新文字
+      });
+  
+      wx.hideLoading();
+    } catch (e) {
+      wx.hideLoading();
+      console.error(e);
+      wx.showToast({ title: '规划失败', icon: 'none' });
     }
-  
-    // ✅ 2) 走腾讯路线（兜底）
-    qqmapsdk.direction({
-      mode: 'bicycling',
-      from: `${start.latitude},${start.longitude}`,
-      to: `${end.latitude},${end.longitude}`,
-      success: (res) => {
-        const route = res.result.routes[0];
-        const coors = route.polyline;
-  
-        const pl = [];
-        const kr = 1000000;
-        for (let i = 2; i < coors.length; i++) {
-          coors[i] = Number(coors[i - 2]) + Number(coors[i]) / kr;
-        }
-        for (let i = 0; i < coors.length; i += 2) {
-          pl.push({ latitude: coors[i], longitude: coors[i + 1] });
-        }
-  
-        this.setData({
-          polyline: [{
-            points: pl,
-            color: '#007AFF',
-            width: 6
-          }]
-        });
-  
-        wx.hideLoading();
-      },
-      fail: (err) => {
-        wx.hideLoading();
-        console.error('腾讯规划失败', err);
-        wx.showToast({ title: '规划失败', icon: 'none' });
-      }
-    });
   },
 
   /**
@@ -655,6 +789,7 @@ Page({
     this.restore();
   },
 
+//回到我的位置
   restore() {
     const mapCtx = wx.createMapContext('map');
     if (this.data.myMockLat && this.data.myMockLng) {
@@ -670,6 +805,7 @@ Page({
       });
     }
   },
+  //刷新
   resetNavigation() {
     // 1) 清路线/清选点模式/清终点
     const resetStart = {
@@ -677,18 +813,18 @@ Page({
       latitude: this.data.myMockLat || this.data.start.latitude,
       longitude: this.data.myMockLng || this.data.start.longitude
     };
-  
+
     const resetEnd = { name: '', latitude: '', longitude: '' };
-  
+
     // 2) 清掉起点/终点 marker（如果你用了 startMarker/endMarker）
     const startMarkerId = this.data.startMarkerId || 7777;
     const endMarkerId = this.data.endMarkerId || 8888;
-  
+
     let markers = (this.data.markers || []).filter(m => {
       const idNum = Number(m.id);
       return idNum !== Number(startMarkerId) && idNum !== Number(endMarkerId);
     });
-  
+
     // 3) 更新数据
     this.setData({
       polyline: [],
@@ -699,9 +835,11 @@ Page({
       endMarker: null,
       markers
     });
-  
+
+    this.resetRouteUI();
+
     wx.showToast({ title: '已重置导航', icon: 'none' });
   },
 
-  mapmarker_choose() {}
+  mapmarker_choose() { }
 });

@@ -400,3 +400,63 @@ page {
   border: 2rpx solid #ff3b30;
   color: #ff3b30;
 }
+
+/* ===== 悬浮路线信息卡片 ===== */
+/* ===== 悬浮路线信息卡片（固定在快捷地标下方的区域） ===== */
+.route-info-card {
+  position: fixed;              /* ✅ 关键：不跟 map 走 absolute */
+  left: 20rpx;
+  right: 20rpx;
+
+  top: 140px;                   /* ✅ 用 px 更稳定：导航栏90 + 地标40 + 间距 */
+  z-index: 9999;                /* ✅ 保证在最上层 */
+
+  padding: 18rpx 20rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
+
+  /* pointer-events: none;         ✅ 不挡地图点击/拖动 */
+}
+
+.route-info-row {
+  font-size: 26rpx;
+  color: #222;
+  line-height: 38rpx;
+}
+
+.route-info-extra {
+  margin-top: 6rpx;
+  font-size: 26rpx;
+  color: #d93026;
+  font-weight: 600;
+  line-height: 38rpx;
+}
+
+.route-info-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 16rpx;
+}
+
+.route-mode-tabs{
+  display:flex;
+  background: rgba(0,0,0,0.06);
+  border-radius: 999rpx;
+  padding: 4rpx;
+}
+
+.route-mode-tabs .tab{
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  color:#333;
+}
+
+.route-mode-tabs .tab-on{
+  background: rgba(0,98,255,0.18);
+  color:#0062ff;
+  font-weight: 700;
+}

@@ -45,6 +45,21 @@
   </scroll-view>
 </view>
 
+<!-- ✅ 悬浮路线信息卡片：放在 map 外，fixed 悬浮，不会被地图吞 -->
+<view wx:if="{{routeDistanceText}}" class="route-info-card">
+  <view class="route-info-head">
+    <view class="route-info-row">{{routeDistanceText}}</view>
+
+    <view class="route-mode-tabs">
+      <view class="tab {{travelMode==='walk' ? 'tab-on' : ''}}" data-mode="walk" bindtap="onModeTap">步行</view>
+      <view class="tab {{travelMode==='bike' ? 'tab-on' : ''}}" data-mode="bike" bindtap="onModeTap">骑车</view>
+    </view>
+  </view>
+
+  <view class="route-info-row">{{routeTimeText}}</view>
+  <view wx:if="{{routeExtraText}}" class="route-info-extra">{{routeExtraText}}</view>
+</view>
+
 <map id="map" style="width: 100%; height: calc(100vh - 100px)" latitude="{{latitude}}" longitude="{{longitude}}" scale="{{scale}}" markers="{{markers}}" polyline="{{polyline}}" show-location="{{false}}" bindmarkertap="markertap" bindtap="onMapTap">
 
   <view class="riding-panel" wx:if="{{isRiding}}">
