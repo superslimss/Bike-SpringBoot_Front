@@ -60,7 +60,19 @@
   <view wx:if="{{routeExtraText}}" class="route-info-extra">{{routeExtraText}}</view>
 </view>
 
-<map id="map" style="width: 100%; height: calc(100vh - 100px)" latitude="{{latitude}}" longitude="{{longitude}}" scale="{{scale}}" markers="{{markers}}" polyline="{{polyline}}" show-location="{{false}}" bindmarkertap="markertap" bindtap="onMapTap">
+<map
+  id="map"
+  style="width: 100%; height: calc(100vh - 100px)"
+  latitude="{{latitude}}"
+  longitude="{{longitude}}"
+  scale="{{scale}}"
+  markers="{{markers}}"
+  polyline="{{polyline}}"
+  polygons="{{polygons}}"
+  show-location="{{false}}"
+  bindmarkertap="markertap"
+  bindtap="onMapTap"
+>
 
   <view class="riding-panel" wx:if="{{isRiding}}">
     <view class="panel-header">

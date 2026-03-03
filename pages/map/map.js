@@ -126,13 +126,18 @@ Page({
     routeExtraText: '',
 
     travelMode: 'bike',      // 'walk' | 'bike'
-speedWalk: 1.3,          // m/s 步行速度（约 4.7km/h）
-speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
+    speedWalk: 1.3,          // m/s 步行速度（约 4.7km/h）
+    speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
+
+    polygons: [], 
+
+    parkingMarkers: [],
   },
 
   onLoad() {
     this.initStaticSites();
     this.loadBikesFromServer();
+    this.loadParkingAreas(); // ✅ 加这一行
     this.startLocationUpdate();
   },
   startPick(e) {
@@ -163,6 +168,7 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
       _jamRoutePoints: []
     });
   },
+
 
   /**
    * ✅ 点地图任意位置：设置为终点 end
@@ -254,34 +260,34 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
   onModeTap(e) {
     const mode = e.currentTarget.dataset.mode; // 'walk' or 'bike'
     if (!mode) return;
-  
+
     this.setData({ travelMode: mode }, () => {
       // 如果已经规划过路线，切换模式时直接刷新时间显示
       this.updateRouteTimeCard();
     });
   },
-  
+
   updateRouteTimeCard() {
     const { travelMode, speedWalk, speedBike, _fastRoutePoints, _jamRoutePoints } = this.data;
-  
+
     if (!_fastRoutePoints || _fastRoutePoints.length < 2) return;
-  
+
     const speed = travelMode === 'walk' ? speedWalk : speedBike;
-  
+
     const fastDist = calcDistanceMeters(_fastRoutePoints);
     const fastMin = estimateMinutesBySpeed(fastDist, speed);
-  
+
     let extraText = '';
     if (_jamRoutePoints && _jamRoutePoints.length >= 2) {
       const jamDist = calcDistanceMeters(_jamRoutePoints);
       const jamMin = estimateMinutesBySpeed(jamDist, speed);
       const diff = jamMin - fastMin;
-  
+
       if (diff > 0.5) extraText = `红线预计多花 ${Math.round(diff)} 分钟`;
       else if (diff < -0.5) extraText = `红线反而快 ${Math.round(-diff)} 分钟（检查权重/路网）`;
       else extraText = `两条路线耗时接近`;
     }
-  
+
     this.setData({
       routeDistanceText: `预计距离：${fmtDistance(fastDist)}`,
       routeTimeText: `预计时间：${fmtMinutes(fastMin)}（${travelMode === 'walk' ? '步行' : '骑行'}）`,
@@ -384,7 +390,12 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
       }
     }));
 
-    let finalMarkers = [...staticMarkers, ...this.data.bikeMarkers];
+    let finalMarkers = [
+      ...staticMarkers,
+      ...(this.data.parkingMarkers || []),  // ✅ 加停车点
+      ...this.data.bikeMarkers
+    ];
+    
     if (this.data.startMarker) finalMarkers.push(this.data.startMarker);
     if (this.data.endMarker) finalMarkers.push(this.data.endMarker);
     if (this.data.myLocationMarker) finalMarkers.push(this.data.myLocationMarker);
@@ -399,6 +410,77 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
     });
   },
 
+  loadParkingAreas() {
+    wx.request({
+      url: 'http://localhost:8080/api/parking-areas/list',
+      method: 'GET',
+      success: (res) => {
+        if (!Array.isArray(res.data)) return;
+  
+        // 1) polygons：停车区域（蓝色）
+        const polygons = res.data.map((area, idx) => ({
+          id: area.id || (9000 + idx),
+          points: (area.points || []).map(p => ({
+            latitude: p.lat,
+            longitude: p.lng
+          })),
+          strokeWidth: 2,
+          strokeColor: '#0062ff',
+          fillColor: '#0062ff33',
+          zIndex: 1
+        }));
+  
+        // 2) parking markers：停车点图标（每个区域一个）
+        const parkingMarkers = res.data.map((area, idx) => {
+          const pts = (area.points || []);
+          if (pts.length === 0) return null;
+  
+          // 简单取中心点（平均值）
+          const center = pts.reduce((acc, p) => {
+            acc.lat += Number(p.lat);
+            acc.lng += Number(p.lng);
+            return acc;
+          }, { lat: 0, lng: 0 });
+  
+          center.lat /= pts.length;
+          center.lng /= pts.length;
+  
+          return {
+            id: 7000 + idx, // 避免和单车、地标冲突
+            latitude: center.lat,
+            longitude: center.lng,
+            iconPath: '/images/parking.png', // ✅ 你放的停车图标
+            width: 28,
+            height: 28,
+            zIndex: 1002,
+            callout: {
+              content: ` ${area.name || '停车点'} `,
+              display: 'BYCLICK',
+              padding: 6,
+              borderRadius: 10
+            }
+          };
+        }).filter(Boolean);
+  
+        // 3) 合并到现有 markers（不覆盖你的单车/定位/地标）
+        //    先把旧的停车点 marker 删除掉（避免重复叠加）
+        const otherMarkers = (this.data.markers || []).filter(m => {
+          const id = Number(m.id);
+          return !(id >= 7000 && id < 8000);
+        });
+  
+        this.setData({
+          polygons,
+          parkingMarkers
+        }, () => {
+          this.refreshParkingMarkersOnMap();  // ✅ 加这一句
+        });
+      },
+      fail: (err) => {
+        console.error('加载停车区失败', err);
+      }
+    });
+  },
   /**
    * 从后端加载单车 marker
    */
@@ -447,6 +529,20 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
     });
   },
 
+  refreshParkingMarkersOnMap() {
+    const pm = this.data.parkingMarkers || [];
+  
+    // 先清掉旧的停车点 marker（7000~7999）
+    const other = (this.data.markers || []).filter(m => {
+      const id = Number(m.id);
+      return !(id >= 7000 && id < 8000);
+    });
+  
+    this.setData({
+      markers: [...other, ...pm]
+    });
+  },
+  
   includePoints(points) {
     const mapCtx = wx.createMapContext('map');
     if (points.length === 1) {
@@ -645,7 +741,7 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
    */
   formSubmit() {
     const { start, end } = this.data;
-  
+
     if (!end.latitude) {
       wx.showToast({ title: '请先选择终点', icon: 'none' });
       return;
@@ -654,9 +750,9 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
       wx.showToast({ title: '定位中，请稍后再试', icon: 'none' });
       return;
     }
-  
+
     wx.showLoading({ title: '路线规划中' });
-  
+
     try {
       // 蓝色：考虑拥挤（推荐）
       const fast = aStarRoute(
@@ -665,7 +761,7 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
         { lat: end.latitude, lng: end.longitude },
         { useJam: true }
       );
-  
+
       // 红色：忽略拥挤（对比）
       const jam = aStarRoute(
         campusGraph,
@@ -673,21 +769,21 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
         { lat: end.latitude, lng: end.longitude },
         { useJam: false }
       );
-  
+
       if (!fast.points || fast.points.length < 2) {
         wx.hideLoading();
         wx.showToast({ title: '未找到可用路线', icon: 'none' });
         return;
       }
-  
+
       // 距离/时间（蓝线用“推荐”）
       const fastDist = calcDistanceMeters(fast.points);
       const fastMin = estimateMinutesBySpeed(fastDist, 4.0);
-  
+
       // 红线对比（如果存在）
       let extraText = '';
       let showRed = false;
-  
+
       if (jam.points && jam.points.length >= 2) {
         // 判断两条路线是否完全一样
         const same =
@@ -696,13 +792,13 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
             Math.abs(p.latitude - fast.points[i].latitude) < 1e-7 &&
             Math.abs(p.longitude - fast.points[i].longitude) < 1e-7
           );
-  
+
         if (!same) {
           showRed = true;
           const jamDist = calcDistanceMeters(jam.points);
           const jamMin = estimateMinutesBySpeed(jamDist, 4.0);
           const diff = jamMin - fastMin;
-  
+
           if (diff > 0.5) {
             extraText = `红线预计多花 ${Math.round(diff)} 分钟`;
           } else if (diff < -0.5) {
@@ -713,11 +809,11 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
           }
         }
       }
-  
+
       const polylines = [
         { points: fast.points, color: '#007AFF', width: 6 }
       ];
-  
+
       if (showRed) {
         polylines.push({
           points: jam.points,
@@ -726,17 +822,17 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
           dottedLine: true
         });
       }
-  
+
       this.setData({
         polyline: polylines,
-      
+
         // ✅ 缓存两条路线，用于切换步行/骑行时立刻重算时间
         _fastRoutePoints: fast.points,
         _jamRoutePoints: (showRed ? jam.points : [])
       }, () => {
         this.updateRouteTimeCard(); // ✅ 按当前 travelMode 刷新文字
       });
-  
+
       wx.hideLoading();
     } catch (e) {
       wx.hideLoading();
@@ -789,7 +885,7 @@ speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
     this.restore();
   },
 
-//回到我的位置
+  //回到我的位置
   restore() {
     const mapCtx = wx.createMapContext('map');
     if (this.data.myMockLat && this.data.myMockLng) {
