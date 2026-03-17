@@ -68,6 +68,54 @@ function fmtMinutes(min) {
   return `约${Math.round(min)}分钟`;
 }
 
+function isPointInPolygon(point, polygon) {
+  const x = Number(point.longitude);
+  const y = Number(point.latitude);
+  let inside = false;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = Number(polygon[i].lng ?? polygon[i].longitude);
+    const yi = Number(polygon[i].lat ?? polygon[i].latitude);
+    const xj = Number(polygon[j].lng ?? polygon[j].longitude);
+    const yj = Number(polygon[j].lat ?? polygon[j].latitude);
+
+    const intersect =
+      ((yi > y) !== (yj > y)) &&
+      (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+
+    if (intersect) {
+      inside = !inside;
+    }
+  }
+
+  return inside;
+}
+
+// 可选：处理“点刚好压在边上”的情况
+function isPointOnSegment(point, a, b, epsilon = 1e-10) {
+  const px = Number(point.longitude);
+  const py = Number(point.latitude);
+  const ax = Number(a.lng ?? a.longitude);
+  const ay = Number(a.lat ?? a.latitude);
+  const bx = Number(b.lng ?? b.longitude);
+  const by = Number(b.lat ?? b.latitude);
+
+  const cross = (px - ax) * (by - ay) - (py - ay) * (bx - ax);
+  if (Math.abs(cross) > epsilon) return false;
+
+  const dot = (px - ax) * (bx - ax) + (py - ay) * (by - ay);
+  if (dot < 0) return false;
+
+  const lenSq = (bx - ax) * (bx - ax) + (by - ay) * (by - ay);
+  if (dot > lenSq) return false;
+
+  return true;
+}
+
+function isPointInPolygonOrOnEdge(point, polygon) {
+  return isPointInPolygon(point, polygon);
+}
+
 Page({
   data: {
     latitude: map.latitude,
@@ -129,9 +177,12 @@ Page({
     speedWalk: 1.3,          // m/s 步行速度（约 4.7km/h）
     speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
 
-    polygons: [], 
-
+    polygons: [],
     parkingMarkers: [],
+    parkingAreas: [],
+
+    showConfirmModal: false,      // 第一个：是否还车
+    showOutParkingModal: false,   // 第二个：不在停车区
   },
 
   onLoad() {
@@ -395,7 +446,7 @@ Page({
       ...(this.data.parkingMarkers || []),  // ✅ 加停车点
       ...this.data.bikeMarkers
     ];
-    
+
     if (this.data.startMarker) finalMarkers.push(this.data.startMarker);
     if (this.data.endMarker) finalMarkers.push(this.data.endMarker);
     if (this.data.myLocationMarker) finalMarkers.push(this.data.myLocationMarker);
@@ -415,10 +466,20 @@ Page({
       url: 'http://localhost:8080/api/parking-areas/list',
       method: 'GET',
       success: (res) => {
+        console.log('停车区接口返回：', res.data);
         if (!Array.isArray(res.data)) return;
-  
+
+        // 原始区域数据缓存下来，后面还车判定要用
+        const parkingAreas = res.data.map(area => ({
+          ...area,
+          points: (area.points || []).map(p => ({
+            lat: Number(p.lat),
+            lng: Number(p.lng)
+          }))
+        }));
+
         // 1) polygons：停车区域（蓝色）
-        const polygons = res.data.map((area, idx) => ({
+        const polygons = parkingAreas.map((area, idx) => ({
           id: area.id || (9000 + idx),
           points: (area.points || []).map(p => ({
             latitude: p.lat,
@@ -429,27 +490,26 @@ Page({
           fillColor: '#0062ff33',
           zIndex: 1
         }));
-  
+
         // 2) parking markers：停车点图标（每个区域一个）
-        const parkingMarkers = res.data.map((area, idx) => {
-          const pts = (area.points || []);
+        const parkingMarkers = parkingAreas.map((area, idx) => {
+          const pts = area.points || [];
           if (pts.length === 0) return null;
-  
-          // 简单取中心点（平均值）
+
           const center = pts.reduce((acc, p) => {
-            acc.lat += Number(p.lat);
-            acc.lng += Number(p.lng);
+            acc.lat += p.lat;
+            acc.lng += p.lng;
             return acc;
           }, { lat: 0, lng: 0 });
-  
+
           center.lat /= pts.length;
           center.lng /= pts.length;
-  
+
           return {
-            id: 7000 + idx, // 避免和单车、地标冲突
+            id: 7000 + idx,
             latitude: center.lat,
             longitude: center.lng,
-            iconPath: '/images/parking.png', // ✅ 你放的停车图标
+            iconPath: '/images/parking.png',
             width: 28,
             height: 28,
             zIndex: 1002,
@@ -461,26 +521,49 @@ Page({
             }
           };
         }).filter(Boolean);
-  
-        // 3) 合并到现有 markers（不覆盖你的单车/定位/地标）
-        //    先把旧的停车点 marker 删除掉（避免重复叠加）
-        const otherMarkers = (this.data.markers || []).filter(m => {
-          const id = Number(m.id);
-          return !(id >= 7000 && id < 8000);
-        });
-  
+
         this.setData({
           polygons,
-          parkingMarkers
+          parkingMarkers,
+          parkingAreas
         }, () => {
-          this.refreshParkingMarkersOnMap();  // ✅ 加这一句
+          this.refreshParkingMarkersOnMap();
         });
+
       },
       fail: (err) => {
         console.error('加载停车区失败', err);
       }
     });
   },
+
+  checkIfInParkingArea(lat, lng) {
+    const parkingAreas = this.data.parkingAreas || [];
+    const point = {
+      latitude: Number(lat),
+      longitude: Number(lng)
+    };
+
+    console.log('当前还车坐标：', point);
+    console.log('parkingAreas：', parkingAreas);
+
+    for (let i = 0; i < parkingAreas.length; i++) {
+      const area = parkingAreas[i];
+      const points = area.points || [];
+
+      console.log('正在判断停车区：', area.name);
+      console.log('停车区 points：', JSON.stringify(points));
+
+      if (points.length >= 3 && isPointInPolygonOrOnEdge(point, points)) {
+        console.log('命中停车区：', area.name);
+        return area;
+      }
+    }
+
+    console.log('没有命中任何停车区');
+    return null;
+  },
+
   /**
    * 从后端加载单车 marker
    */
@@ -531,18 +614,18 @@ Page({
 
   refreshParkingMarkersOnMap() {
     const pm = this.data.parkingMarkers || [];
-  
+
     // 先清掉旧的停车点 marker（7000~7999）
     const other = (this.data.markers || []).filter(m => {
       const id = Number(m.id);
       return !(id >= 7000 && id < 8000);
     });
-  
+
     this.setData({
       markers: [...other, ...pm]
     });
   },
-  
+
   includePoints(points) {
     const mapCtx = wx.createMapContext('map');
     if (points.length === 1) {
@@ -651,64 +734,146 @@ Page({
   },
 
   finishOrder() {
+    const endLat = this.data.myMockLat;
+    const endLng = this.data.myMockLng;
+
     wx.showModal({
       title: '提示',
-      content: '确认还车并结束计费吗？',
-      confirmColor: '#333333',
+      content: '是否确认还车？',
+      confirmText: '确定',
+      cancelText: '取消',
       success: (res) => {
-        if (res.confirm) {
-          wx.showLoading({
-            title: '正在结算...',
-            mask: true
+        if (!res.confirm) return;
+
+        const matchedArea = this.checkIfInParkingArea(endLat, endLng);
+
+        // 在停车点内：直接还车
+        if (matchedArea) {
+          this.doFinishOrder(endLat, endLng);
+          return;
+        }
+
+        // 不在停车点内：显示你新的违停窗口
+        this.setData({
+          showOutParkingModal: true
+        });
+      }
+    });
+  },
+
+  // 原弹窗：取消还车
+  cancelFinishConfirm() {
+    this.setData({
+      showConfirmModal: false
+    });
+  },
+
+  // 原弹窗：确定还车
+  confirmFinishOrder() {
+    const endLat = this.data.myMockLat;
+    const endLng = this.data.myMockLng;
+
+    // 先关闭原来的“是否确认还车”弹窗
+    this.setData({
+      showConfirmModal: false
+    });
+
+    // 点击“确定”后再进行停车点判断
+    const matchedArea = this.checkIfInParkingArea(endLat, endLng);
+
+    // 在停车点内：直接还车
+    if (matchedArea) {
+      this.doFinishOrder(endLat, endLng);
+      return;
+    }
+
+    // 不在停车点内：弹出第二个窗口
+    this.setData({
+      showOutParkingModal: true
+    });
+  },
+
+  // 第二个弹窗：取消还车
+  cancelOutParking() {
+    this.setData({
+      showOutParkingModal: false
+    });
+  },
+
+  // 第二个弹窗：支付还车费并还车
+  confirmForceFinish() {
+    const endLat = this.data.myMockLat;
+    const endLng = this.data.myMockLng;
+
+    this.setData({
+      showOutParkingModal: false,
+      ridingFee: 15   // ✅ 直接强制15元
+    });
+
+    this.doFinishOrder(endLat, endLng);
+  },
+
+  doFinishOrder(endLat, endLng) {
+    wx.showLoading({
+      title: '正在结算...',
+      mask: true
+    });
+
+    const bId = Number(this.data.ridingBikeId);
+
+    wx.request({
+      url: 'http://localhost:8080/api/orders/finish',
+      method: 'POST',
+      header: {
+        'content-type': 'application/json'
+      },
+      data: {
+        id: this.data.currentOrderId,
+        endLat: endLat,
+        endLng: endLng,
+        fee: this.data.ridingFee   // ✅ 加这一行
+      },
+      success: (res) => {
+        wx.hideLoading();
+        if (res.statusCode === 200) {
+          this.stopTimer();
+
+          let markers = this.data.markers.filter(m => Number(m.id) !== bId);
+
+          markers.push({
+            id: bId,
+            latitude: endLat,
+            longitude: endLng,
+            iconPath: '/images/bike.png',
+            width: 40,
+            height: 40
           });
 
-          const endLat = this.data.myMockLat;
-          const endLng = this.data.myMockLng;
-          const bId = Number(this.data.ridingBikeId);
+          this.setData({
+            isRiding: false,
+            ridingTime: '00:00',
+            currentOrderId: null,
+            ridingBikeId: null,
+            markers: markers
+          });
 
-          wx.request({
-            url: 'http://localhost:8080/api/orders/finish',
-            method: 'POST',
-            header: {
-              'content-type': 'application/json'
-            },
-            data: {
-              id: this.data.currentOrderId,
-              endLat: endLat,
-              endLng: endLng
-            },
-            success: (res) => {
-              wx.hideLoading();
-              if (res.statusCode === 200) {
-                this.stopTimer();
-
-                let markers = this.data.markers.filter(m => Number(m.id) !== bId);
-
-                markers.push({
-                  id: bId,
-                  latitude: endLat,
-                  longitude: endLng,
-                  iconPath: '/images/bike.png',
-                  width: 40,
-                  height: 40
-                });
-
-                this.setData({
-                  isRiding: false,
-                  ridingTime: '00:00',
-                  currentOrderId: null,
-                  ridingBikeId: null,
-                  markers: markers
-                });
-
-                wx.showToast({
-                  title: '还车成功',
-                  icon: 'success'
-                });
-              }
-            }
+          wx.showToast({
+            title: '还车成功',
+            icon: 'success'
+          });
+        } else {
+          wx.showToast({
+            title: '还车失败',
+            icon: 'none'
           });
         }
+      },
+      fail: () => {
+        wx.hideLoading();
+        wx.showToast({
+          title: '结算请求失败',
+          icon: 'none'
+        });
       }
     });
   },
@@ -723,8 +888,18 @@ Page({
       let s = seconds % 60;
       let timeStr = (m < 10 ? '0' + m : m) + ':' + (s < 10 ? '0' + s : s);
 
+      // ✅ 正常骑行费用逻辑
+      let fee = 0;
+
+      if (seconds <= 120) {
+        fee = 0;   // 2分钟内免费
+      } else {
+        fee = 2;   // 超过2分钟固定2元
+      }
+
       this.setData({
-        ridingTime: timeStr
+        ridingTime: timeStr,
+        ridingFee: fee
       });
     }, 1000);
   },

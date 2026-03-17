@@ -3,9 +3,7 @@
     <view class="card-top-left" style="width: calc(100vw - 130px)">
 
       <!-- 起点 -->
-      <view class="card-top-left-view up nav-row {{pickMode === 'start' ? 'nav-active' : ''}}"
-            data-type="start"
-            bindtap="startPick">
+      <view class="card-top-left-view up nav-row {{pickMode === 'start' ? 'nav-active' : ''}}" data-type="start" bindtap="startPick">
         <view class="card-top-circle start"></view>
         <text class="card-top-text {{pickMode === 'start' ? 'nav-text-active' : ''}}">
           {{pickMode === 'start' ? '选点中：点击地图' : (start.name || '当前地点/起点')}}
@@ -13,9 +11,7 @@
       </view>
 
       <!-- 终点 -->
-      <view class="card-top-left-view nav-row {{pickMode === 'end' ? 'nav-active' : ''}}"
-            data-type="end"
-            bindtap="startPick">
+      <view class="card-top-left-view nav-row {{pickMode === 'end' ? 'nav-active' : ''}}" data-type="end" bindtap="startPick">
         <view class="card-top-circle end"></view>
         <text class="card-top-text {{pickMode === 'end' ? 'nav-text-active' : ''}}">
           {{pickMode === 'end' ? '选点中：点击地图' : (end.name || '请选择终点')}}
@@ -34,7 +30,7 @@
   </view>
 </view>
 
-<!-- ✅ 快捷地标分类栏：始终显示（不再根据 polyline 切换） -->
+<!-- 快捷地标分类栏 -->
 <view class="relative">
   <scroll-view style="flex: 1; min-width: 0" scroll-x="true" scroll-with-animation="true">
     <view class="card-bottom-category" style="width: {{site_data.length*75}}px;">
@@ -45,7 +41,7 @@
   </scroll-view>
 </view>
 
-<!-- ✅ 悬浮路线信息卡片：放在 map 外，fixed 悬浮，不会被地图吞 -->
+<!-- 路线信息卡片 -->
 <view wx:if="{{routeDistanceText}}" class="route-info-card">
   <view class="route-info-head">
     <view class="route-info-row">{{routeDistanceText}}</view>
@@ -60,36 +56,7 @@
   <view wx:if="{{routeExtraText}}" class="route-info-extra">{{routeExtraText}}</view>
 </view>
 
-<map
-  id="map"
-  style="width: 100%; height: calc(100vh - 100px)"
-  latitude="{{latitude}}"
-  longitude="{{longitude}}"
-  scale="{{scale}}"
-  markers="{{markers}}"
-  polyline="{{polyline}}"
-  polygons="{{polygons}}"
-  show-location="{{false}}"
-  bindmarkertap="markertap"
-  bindtap="onMapTap"
->
-
-  <view class="riding-panel" wx:if="{{isRiding}}">
-    <view class="panel-header">
-      <text class="status-dot"></text>
-      <text>正在骑行</text>
-    </view>
-
-    <view class="time-box">
-      <text class="time-num">{{ridingTime}}</text>
-      <text class="time-label">骑行时间</text>
-    </view>
-
-    <view class="btn-group">
-      <button class="btn-stop" bindtap="finishOrder">结束骑行</button>
-    </view>
-  </view>
-
+<map id="map" style="width: 100%; height: calc(100vh - 100px)" latitude="{{latitude}}" longitude="{{longitude}}" scale="{{scale}}" markers="{{markers}}" polyline="{{polyline}}" polygons="{{polygons}}" show-location="{{false}}" bindmarkertap="markertap" bindtap="onMapTap">
   <cover-view class="map_right_card" style="margin-top: calc(100vh - 375px)">
     <cover-view class="location" wx:if="{{polyline.length != 0}}" bindtap="restore">
       <cover-image class="img" src="{{restore}}" />
@@ -99,21 +66,73 @@
     </cover-view>
   </cover-view>
 
-<!-- 刷新/重置按钮（在回到我的位置上方） -->
-<cover-view class="reset-btn" bindtap="resetNavigation">
-  <cover-image src="/images/refresh.png"></cover-image>
-</cover-view>
+  <!-- 刷新/重置按钮 -->
+  <cover-view class="reset-btn" bindtap="resetNavigation">
+    <cover-image src="/images/refresh.png"></cover-image>
+  </cover-view>
 
   <cover-view class="location-btn" bindtap="restore">
     <cover-image src="/images/center.png"></cover-image>
   </cover-view>
-
 </map>
+<!-- 正常骑行窗口 -->
+<view class="riding-panel" wx:if="{{isRiding && !showOutParkingModal}}">
+  <view class="panel-header">
+    <text class="status-dot"></text>
+    <text>正在骑行</text>
+  </view>
+
+  <view class="time-row">
+    <view class="time-left">
+      <text class="time-label">骑行时间</text>
+      <text class="time-num">{{ridingTime}}</text>
+    </view>
+
+    <view class="time-right">
+      <text class="time-label">费用</text>
+      <view class="fee-wrap">
+        <text class="fee-num">{{ridingFee}}</text>
+        <text class="fee-unit">元</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="btn-group">
+    <button class="btn-main" bindtap="finishOrder">结束骑行</button>
+  </view>
+</view>
+
+<!-- 违停窗口 -->
+<view class="riding-panel" wx:if="{{isRiding && showOutParkingModal}}">
+  <view class="panel-header">
+    <text class="status-dot"></text>
+    <text>当前不在停车点内</text>
+  </view>
+
+  <view class="time-row">
+    <view class="time-left">
+      <text class="time-label">骑行时间</text>
+      <text class="time-num">{{ridingTime}}</text>
+    </view>
+
+    <view class="time-right">
+      <text class="time-label">费用</text>
+      <view class="fee-wrap">
+        <text class="fee-num">15</text>
+        <text class="fee-unit">元</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="btn-group-double">
+    <button class="btn-sub" bindtap="cancelOutParking">取消还车</button>
+    <button class="btn-danger" bindtap="confirmForceFinish">支付还车费并还车</button>
+  </view>
+</view>
 
 <!-- 底部扫码用车按钮（非骑行状态才显示） -->
 <view class="bottom-bar" wx:if="{{!isRiding}}">
-  <view class="scan-btn {{isUnlockMode ? 'scan-btn-cancel' : ''}}"
-        bindtap="toggleUnlockMode">
+  <view class="scan-btn {{isUnlockMode ? 'scan-btn-cancel' : ''}}" bindtap="toggleUnlockMode">
     {{isUnlockMode ? '取消扫码' : '扫码用车'}}
   </view>
 </view>
