@@ -1,6 +1,6 @@
 // pages/map/map.js
-import map from '@data/map';
-import media from '@data/media';
+const map = require('../../data/map');
+const media = require('../../data/media');
 
 const QQMapWX = require('@libs/qqmap-wx-jssdk.min');
 const qqmapsdk = new QQMapWX({

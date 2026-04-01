@@ -1,6 +1,6 @@
 // pages/user/user.js
-import data from '@data/data';
-import media from '@data/media';
+const data = require('../../data/data');
+const media = require('../../data/media');
 
 Page({
   data: {
@@ -15,6 +15,8 @@ Page({
     feedback: media.feedback,
     share: media.share,
     miniprogramming_ma: media.miniprogramming_ma,
+
+    userInfo: null,
   },
 
   // 联系作者
@@ -26,8 +28,8 @@ Page({
       success(res) {
         if (res.confirm == true) {
           wx.previewImage({
-            current: _this.data.contact, 
-            urls: [_this.data.contact], 
+            current: _this.data.contact,
+            urls: [_this.data.contact],
           });
         }
       },
@@ -43,11 +45,53 @@ Page({
       success(res) {
         if (res.confirm == true) {
           wx.previewImage({
-            current: _this.data.miniprogramming_ma, 
-            urls: [_this.data.miniprogramming_ma], 
+            current: _this.data.miniprogramming_ma,
+            urls: [_this.data.miniprogramming_ma],
           });
         }
       },
     });
   },
-});
+
+  onShow() {
+    const userInfo = wx.getStorageSync('userInfo')
+
+    this.setData({
+      userInfo
+    })
+  },
+
+  goLogin() {
+    const userInfo = this.data.userInfo
+
+    if (userInfo) {
+      wx.showModal({
+        title: '当前已登录',
+        content: `用户名：${userInfo.username}\n身份：${userInfo.role === 'admin' ? '管理员' : '普通用户'}\n\n　　是否退出登录？`,
+        confirmText: '退出登录',
+        cancelText: '取消',
+        success: (res) => {
+          if (res.confirm) {
+            wx.removeStorageSync('userInfo')
+            wx.removeStorageSync('userId')
+            wx.removeStorageSync('role')
+
+            this.setData({
+              userInfo: null
+            })
+
+            wx.showToast({
+              title: '已退出登录',
+              icon: 'success'
+            })
+          }
+        }
+      })
+      return
+    }
+
+    wx.navigateTo({
+      url: '/pages/login/login'
+    })
+  }
+})

@@ -61,7 +61,7 @@ page {
   font-size: 44rpx;
 }
 
-.center_welcome {
+.center_role {
   font-size: 30rpx;
   margin-top: 2px;
   color: grey;

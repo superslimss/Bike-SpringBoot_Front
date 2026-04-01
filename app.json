@@ -3,6 +3,7 @@
         "pages/map/map",
         "pages/map/instruction/instruction",
         "pages/map/search/search",
+        "pages/login/login",
         "pages/user/user",
         "pages/user/statement/statement"
     ],

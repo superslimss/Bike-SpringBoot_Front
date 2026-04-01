@@ -2,13 +2,19 @@
   <view class="my">
     <view class="center">
       <view class="center_top">
-        <view class="center_top_card">
+        <view class="center_top_card" bindtap="goLogin">
           <view class="center_img">
             <image src="{{avatarUrl}}" class="user_head" mode="" />
           </view>
           <view class="center_info">
-            <view class="center_name"> {{miniprogram_name}} </view>
-            <view class="center_welcome"> 欢迎使用校园导航小程序 </view>
+            <view class="center_name">
+              {{userInfo ? userInfo.username : '用户登录'}}
+            </view>
+            <view class="center_role" wx:if="{{userInfo}}">
+              当前身份：
+              <text wx:if="{{userInfo.role === 'admin'}}">管理员</text>
+              <text wx:elif="{{userInfo.role === 'user'}}">普通用户</text>
+            </view>
           </view>
         </view>
       </view>
