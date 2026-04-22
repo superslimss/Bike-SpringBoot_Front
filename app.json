@@ -4,6 +4,7 @@
         "pages/map/instruction/instruction",
         "pages/map/search/search",
         "pages/login/login",
+        "pages/register/register",
         "pages/user/user",
         "pages/user/statement/statement"
     ],

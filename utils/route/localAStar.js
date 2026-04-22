@@ -91,6 +91,7 @@ function isAfterClassTimeDefault() {
   const t = now.getHours() * 60 + now.getMinutes();
   const ranges = [
     [11 * 60 + 30, 12 * 60 + 10],
+    [12 * 60 + 0, 13 * 60 + 0],
     [15 * 60 + 0, 16 * 60 + 0],
     [16 * 60 + 0,  17 * 60 + 0],   // ✅ 新增：16:00 - 17:00
     [17 * 60 + 0, 17 * 60 + 60],

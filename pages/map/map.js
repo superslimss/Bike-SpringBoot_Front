@@ -14,6 +14,7 @@ function isAfterClassTime() {
   const t = now.getHours() * 60 + now.getMinutes();
   const ranges = [
     [11 * 60 + 30, 12 * 60 + 10],
+    [12 * 60 + 0, 13 * 60 + 0],
     [15 * 60 + 0, 16 * 60 + 0],   // 新增下午三点到四点
     [16 * 60 + 0, 17 * 60 + 0],   // ✅ 新增：16:00 - 17:00
     [17 * 60 + 0, 17 * 60 + 60],
@@ -468,8 +469,7 @@ Page({
       success: (res) => {
         console.log('停车区接口返回：', res.data);
         if (!Array.isArray(res.data)) return;
-
-        // 原始区域数据缓存下来，后面还车判定要用
+  
         const parkingAreas = res.data.map(area => ({
           ...area,
           points: (area.points || []).map(p => ({
@@ -477,62 +477,60 @@ Page({
             lng: Number(p.lng)
           }))
         }));
-
-        // 1) polygons：停车区域（蓝色）
-        const polygons = parkingAreas.map((area, idx) => ({
-          id: area.id || (9000 + idx),
-          points: (area.points || []).map(p => ({
-            latitude: p.lat,
-            longitude: p.lng
-          })),
-          strokeWidth: 2,
-          strokeColor: '#0062ff',
-          fillColor: '#0062ff33',
-          zIndex: 1
-        }));
-
-        // 2) parking markers：停车点图标（每个区域一个）
-        const parkingMarkers = parkingAreas.map((area, idx) => {
-          const pts = area.points || [];
-          if (pts.length === 0) return null;
-
-          const center = pts.reduce((acc, p) => {
-            acc.lat += p.lat;
-            acc.lng += p.lng;
-            return acc;
-          }, { lat: 0, lng: 0 });
-
-          center.lat /= pts.length;
-          center.lng /= pts.length;
-
-          return {
-            id: 7000 + idx,
-            latitude: center.lat,
-            longitude: center.lng,
-            iconPath: '/images/parking.png',
-            width: 28,
-            height: 28,
-            zIndex: 1002,
-            callout: {
-              content: ` ${area.name || '停车点'} `,
-              display: 'BYCLICK',
-              padding: 6,
-              borderRadius: 10
-            }
-          };
-        }).filter(Boolean);
-
+  
+        // ✅ 关键改动：使用 filter 过滤掉没有坐标点的区域（比如你的违停区域 ID 0）
+        const polygons = parkingAreas
+          .filter(area => area.points && area.points.length >= 3) // 至少3个点才能构成区域
+          .map((area, idx) => ({
+            id: area.id || (9000 + idx),
+            points: area.points.map(p => ({
+              latitude: p.lat,
+              longitude: p.lng
+            })),
+            strokeWidth: 2,
+            strokeColor: '#0062ff',
+            fillColor: '#0062ff33',
+            zIndex: 1
+          }));
+  
+        // 停车图标也做同样的过滤
+        const parkingMarkers = parkingAreas
+          .filter(area => area.points && area.points.length > 0)
+          .map((area, idx) => {
+            const pts = area.points;
+            const center = pts.reduce((acc, p) => {
+              acc.lat += p.lat;
+              acc.lng += p.lng;
+              return acc;
+            }, { lat: 0, lng: 0 });
+  
+            center.lat /= pts.length;
+            center.lng /= pts.length;
+  
+            return {
+              id: 7000 + idx,
+              latitude: center.lat,
+              longitude: center.lng,
+              iconPath: '/images/parking.png',
+              width: 28,
+              height: 28,
+              zIndex: 1002,
+              callout: {
+                content: ` ${area.name || '停车点'} `,
+                display: 'BYCLICK',
+                padding: 6,
+                borderRadius: 10
+              }
+            };
+          });
+  
         this.setData({
           polygons,
           parkingMarkers,
-          parkingAreas
+          parkingAreas // 逻辑判断仍保留所有区域（包含ID 0）
         }, () => {
           this.refreshParkingMarkersOnMap();
         });
-
-      },
-      fail: (err) => {
-        console.error('加载停车区失败', err);
       }
     });
   },
@@ -688,6 +686,26 @@ Page({
   },
 
   sendUnlockRequest(bikeId) {
+    // 1. 获取本地缓存的真实用户 ID
+    const currentUserId = wx.getStorageSync('userId');
+
+    // 2. 登录拦截：如果没登录，提示并跳转
+    if (!currentUserId) {
+      wx.showModal({
+        title: '提示',
+        content: '请先登录后再进行骑行',
+        confirmText: '去登录',
+        success: (res) => {
+          if (res.confirm) {
+            wx.navigateTo({
+              url: '/pages/login/login'
+            });
+          }
+        }
+      });
+      return;
+    }
+
     wx.showLoading({
       title: '正在开锁'
     });
@@ -697,7 +715,7 @@ Page({
       method: 'POST',
       data: {
         bikeId: bikeId,
-        userId: 1,
+        userId: currentUserId, // ✅ 使用动态获取的真实用户 ID
         startLat: this.data.myMockLat,
         startLng: this.data.myMockLng
       },
@@ -721,6 +739,12 @@ Page({
           });
 
           this.startTimer();
+        } else {
+          // 处理后端返回的非 200 状态码（如 401 非法 ID）
+          wx.showToast({
+            title: res.data || '创建订单失败',
+            icon: 'none'
+          });
         }
       },
       fail: () => {

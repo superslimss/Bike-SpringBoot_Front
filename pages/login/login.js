@@ -16,6 +16,13 @@ Page({
     })
   },
 
+  // 跳转到注册页面
+  goToRegister() {
+    wx.navigateTo({
+      url: '/pages/register/register'
+    });
+  },
+
   handleLogin() {
     const { username, password } = this.data
 

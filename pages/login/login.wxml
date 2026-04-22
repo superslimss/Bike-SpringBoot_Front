@@ -12,31 +12,19 @@
 
       <view class="input-group">
         <view class="input-label">用户名</view>
-        <input
-          class="input-box"
-          placeholder="请输入用户名"
-          placeholder-class="input-placeholder"
-          value="{{username}}"
-          bindinput="onUsernameInput"
-        />
+        <input class="input-box" placeholder="请输入用户名" placeholder-class="input-placeholder" value="{{username}}" bindinput="onUsernameInput" />
       </view>
 
       <view class="input-group">
         <view class="input-label">密码</view>
-        <input
-          class="input-box"
-          placeholder="请输入密码"
-          placeholder-class="input-placeholder"
-          password="true"
-          value="{{password}}"
-          bindinput="onPasswordInput"
-        />
+        <input class="input-box" placeholder="请输入密码" placeholder-class="input-placeholder" password="true" value="{{password}}" bindinput="onPasswordInput" />
       </view>
 
       <button class="login-btn" bindtap="handleLogin">登 录</button>
 
       <view class="login-tip">
-        普通用户和管理员均可使用账号密码登录
+        <text>普通用户和管理员均可使用账号密码登录</text>
+        <text class="register-link" bindtap="goToRegister">注册</text>
       </view>
     </view>
   </view>
