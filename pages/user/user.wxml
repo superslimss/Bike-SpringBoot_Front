@@ -21,26 +21,33 @@
     </view>
 
     <view class="menu">
+
+      <view bindtap="goHistory" class="menu_row">
+        <image style="height: 60rpx; width: 60rpx; margin-left: 30rpx" src="{{order}}"></image>
+        <view style="margin-left: 10rpx">骑行历史订单</view>
+        <image style="height: 40rpx; width: 40rpx; margin-left: auto; margin-right: 10px" src="{{green_arrow}}"></image>
+      </view>
+
       <view bindtap="contact" class="menu_row">
-        <image style="height: 60rpx; width: 60rpx; margin-left: 30rpx" src="{{users}}"> </image>
+        <image style="height: 60rpx; width: 60rpx; margin-left: 30rpx" src="{{users}}"></image>
         <view style="margin-left: 10rpx">联系作者</view>
         <image style="height: 40rpx; width: 40rpx; margin-left: auto; margin-right: 10px" src="{{green_arrow}}"></image>
       </view>
 
       <button class="menu_row open_type" style="width: 95%" open-type="contact">
-        <image style="height: 60rpx; width: 60rpx; margin-left: 30rpx" src="{{chat}}"> </image>
+        <image style="height: 60rpx; width: 60rpx; margin-left: 30rpx" src="{{chat}}"></image>
         <view style="margin-left: 10rpx">客服对话</view>
         <image style="height: 40rpx; width: 40rpx; margin-left: auto; margin-right: 10px" src="{{green_arrow}}"></image>
       </button>
 
       <button class="menu_row open_type" style="width: 95%" open-type="feedback">
-        <image style="height: 60rpx; width: 60rpx; margin-left: 30rpx" src="{{feedback}}"> </image>
+        <image style="height: 60rpx; width: 60rpx; margin-left: 30rpx" src="{{feedback}}"></image>
         <view style="margin-left: 10rpx">意见反馈</view>
         <image style="height: 40rpx; width: 40rpx; margin-left: auto; margin-right: 10px" src="{{green_arrow}}"></image>
       </button>
 
       <button class="menu_row open_type" style="width: 95%" bindtap="share">
-        <image style="height: 60rpx; width: 60rpx; margin-left: 30rpx" src="{{share}}"> </image>
+        <image style="height: 60rpx; width: 60rpx; margin-left: 30rpx" src="{{share}}"></image>
         <view style="margin-left: 10rpx">推荐给好友</view>
         <image style="height: 40rpx; width: 40rpx; margin-left: auto; margin-right: 10px" src="{{green_arrow}}"></image>
       </button>

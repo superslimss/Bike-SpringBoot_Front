@@ -1,0 +1,14 @@
+<view class="detail-page">
+  <map id="orderMap" class="map"
+    latitude="{{centerLat}}" longitude="{{centerLng}}"
+    markers="{{markers}}" polyline="{{polyline}}" scale="16">
+  </map>
+  <view class="detail-card">
+    <view class="fee-section">支付金额：￥{{order.fee}}</view>
+    <view class="detail-info">
+      <view>开始时间：{{order.startTime}}</view>
+      <view>结束时间：{{order.endTime}}</view>
+      <view>骑行时长：{{order.rideTime}}</view>
+    </view>
+  </view>
+</view>

@@ -1,6 +1,7 @@
 // pages/map/map.js
 const map = require('../../data/map');
 const media = require('../../data/media');
+const geo = require('../../utils/geo'); // 引入工具类
 
 const QQMapWX = require('@libs/qqmap-wx-jssdk.min');
 const qqmapsdk = new QQMapWX({
@@ -27,30 +28,30 @@ function toLLPoints(points) {
   return points.map(p => ({ latitude: p.latitude, longitude: p.longitude }));
 }
 
-function calcDistanceMeters(points) {
-  if (!points || points.length < 2) return 0;
+// function calcDistanceMeters(points) {
+//   if (!points || points.length < 2) return 0;
 
-  const R = 6371000;
-  const toRad = d => (d * Math.PI) / 180;
+//   const R = 6371000;
+//   const toRad = d => (d * Math.PI) / 180;
 
-  let sum = 0;
-  for (let i = 0; i < points.length - 1; i++) {
-    const a = points[i];
-    const b = points[i + 1];
+//   let sum = 0;
+//   for (let i = 0; i < points.length - 1; i++) {
+//     const a = points[i];
+//     const b = points[i + 1];
 
-    const dLat = toRad(b.latitude - a.latitude);
-    const dLng = toRad(b.longitude - a.longitude);
-    const la1 = toRad(a.latitude);
-    const la2 = toRad(b.latitude);
+//     const dLat = toRad(b.latitude - a.latitude);
+//     const dLng = toRad(b.longitude - a.longitude);
+//     const la1 = toRad(a.latitude);
+//     const la2 = toRad(b.latitude);
 
-    const x =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+//     const x =
+//       Math.sin(dLat / 2) ** 2 +
+//       Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
 
-    sum += 2 * R * Math.asin(Math.sqrt(x));
-  }
-  return sum;
-}
+//     sum += 2 * R * Math.asin(Math.sqrt(x));
+//   }
+//   return sum;
+// }
 
 // 速度：你可以按实际改（骑行一般 3~6m/s；校园慢点 3.5~4.5）
 function estimateMinutesBySpeed(distanceMeters, speedMps = 4.0) {
@@ -59,38 +60,38 @@ function estimateMinutesBySpeed(distanceMeters, speedMps = 4.0) {
   return sec / 60;
 }
 
-function fmtDistance(m) {
-  if (m < 1000) return `${Math.round(m)}m`;
-  return `${(m / 1000).toFixed(2)}km`;
-}
+// function fmtDistance(m) {
+//   if (m < 1000) return `${Math.round(m)}m`;
+//   return `${(m / 1000).toFixed(2)}km`;
+// }
 
-function fmtMinutes(min) {
-  if (min < 1) return `约1分钟`;
-  return `约${Math.round(min)}分钟`;
-}
+// function fmtMinutes(min) {
+//   if (min < 1) return `约1分钟`;
+//   return `约${Math.round(min)}分钟`;
+// }
 
-function isPointInPolygon(point, polygon) {
-  const x = Number(point.longitude);
-  const y = Number(point.latitude);
-  let inside = false;
+// function isPointInPolygon(point, polygon) {
+//   const x = Number(point.longitude);
+//   const y = Number(point.latitude);
+//   let inside = false;
 
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = Number(polygon[i].lng ?? polygon[i].longitude);
-    const yi = Number(polygon[i].lat ?? polygon[i].latitude);
-    const xj = Number(polygon[j].lng ?? polygon[j].longitude);
-    const yj = Number(polygon[j].lat ?? polygon[j].latitude);
+//   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+//     const xi = Number(polygon[i].lng ?? polygon[i].longitude);
+//     const yi = Number(polygon[i].lat ?? polygon[i].latitude);
+//     const xj = Number(polygon[j].lng ?? polygon[j].longitude);
+//     const yj = Number(polygon[j].lat ?? polygon[j].latitude);
 
-    const intersect =
-      ((yi > y) !== (yj > y)) &&
-      (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+//     const intersect =
+//       ((yi > y) !== (yj > y)) &&
+//       (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
 
-    if (intersect) {
-      inside = !inside;
-    }
-  }
+//     if (intersect) {
+//       inside = !inside;
+//     }
+//   }
 
-  return inside;
-}
+//   return inside;
+// }
 
 // 可选：处理“点刚好压在边上”的情况
 function isPointOnSegment(point, a, b, epsilon = 1e-10) {
@@ -113,9 +114,6 @@ function isPointOnSegment(point, a, b, epsilon = 1e-10) {
   return true;
 }
 
-function isPointInPolygonOrOnEdge(point, polygon) {
-  return isPointInPolygon(point, polygon);
-}
 
 Page({
   data: {
@@ -326,12 +324,12 @@ Page({
 
     const speed = travelMode === 'walk' ? speedWalk : speedBike;
 
-    const fastDist = calcDistanceMeters(_fastRoutePoints);
+    const fastDist = geo.calcDistanceMeters(_fastRoutePoints);
     const fastMin = estimateMinutesBySpeed(fastDist, speed);
 
     let extraText = '';
     if (_jamRoutePoints && _jamRoutePoints.length >= 2) {
-      const jamDist = calcDistanceMeters(_jamRoutePoints);
+      const jamDist = geo.calcDistanceMeters(_jamRoutePoints);
       const jamMin = estimateMinutesBySpeed(jamDist, speed);
       const diff = jamMin - fastMin;
 
@@ -341,8 +339,8 @@ Page({
     }
 
     this.setData({
-      routeDistanceText: `预计距离：${fmtDistance(fastDist)}`,
-      routeTimeText: `预计时间：${fmtMinutes(fastMin)}（${travelMode === 'walk' ? '步行' : '骑行'}）`,
+      routeDistanceText: `预计距离：${geo.fmtDistance(fastDist)}`,
+      routeTimeText: `预计时间：${geo.fmtMinutes(fastMin)}（${travelMode === 'walk' ? '步行' : '骑行'}）`,
       routeExtraText: extraText
     });
   },
@@ -469,7 +467,7 @@ Page({
       success: (res) => {
         console.log('停车区接口返回：', res.data);
         if (!Array.isArray(res.data)) return;
-  
+
         const parkingAreas = res.data.map(area => ({
           ...area,
           points: (area.points || []).map(p => ({
@@ -477,7 +475,7 @@ Page({
             lng: Number(p.lng)
           }))
         }));
-  
+
         // ✅ 关键改动：使用 filter 过滤掉没有坐标点的区域（比如你的违停区域 ID 0）
         const polygons = parkingAreas
           .filter(area => area.points && area.points.length >= 3) // 至少3个点才能构成区域
@@ -492,7 +490,7 @@ Page({
             fillColor: '#0062ff33',
             zIndex: 1
           }));
-  
+
         // 停车图标也做同样的过滤
         const parkingMarkers = parkingAreas
           .filter(area => area.points && area.points.length > 0)
@@ -503,10 +501,10 @@ Page({
               acc.lng += p.lng;
               return acc;
             }, { lat: 0, lng: 0 });
-  
+
             center.lat /= pts.length;
             center.lng /= pts.length;
-  
+
             return {
               id: 7000 + idx,
               latitude: center.lat,
@@ -523,7 +521,7 @@ Page({
               }
             };
           });
-  
+
         this.setData({
           polygons,
           parkingMarkers,
@@ -552,7 +550,7 @@ Page({
       console.log('正在判断停车区：', area.name);
       console.log('停车区 points：', JSON.stringify(points));
 
-      if (points.length >= 3 && isPointInPolygonOrOnEdge(point, points)) {
+      if (points.length >= 3 && geo.isPointInPolygon(point, points)) {
         console.log('命中停车区：', area.name);
         return area;
       }
@@ -823,17 +821,18 @@ Page({
       showOutParkingModal: false
     });
   },
-
-  // 第二个弹窗：支付还车费并还车
+  // 第二个弹窗：支付还车费并还车（强制还车）
   confirmForceFinish() {
     const endLat = this.data.myMockLat;
     const endLng = this.data.myMockLng;
 
+    // 只负责关闭弹窗，不再设置 ridingFee
     this.setData({
-      showOutParkingModal: false,
-      ridingFee: 15   // ✅ 直接强制15元
+      showOutParkingModal: false
+      // ❌ 删除了 ridingFee: 15，金额由后端根据位置自动计算
     });
 
+    // 调用还车执行函数，后端会识别出不在停车区并计费 10(罚款) + 基础费
     this.doFinishOrder(endLat, endLng);
   },
 
@@ -854,16 +853,19 @@ Page({
       data: {
         id: this.data.currentOrderId,
         endLat: endLat,
-        endLng: endLng,
-        fee: this.data.ridingFee   // ✅ 加这一行
+        endLng: endLng
+        // ✅ 不再发送 fee，金额由后端计算
       },
       success: (res) => {
         wx.hideLoading();
         if (res.statusCode === 200) {
+          // --- 核心修复：停止计时器并重置 UI 状态，防止界面卡住 ---
           this.stopTimer();
 
-          let markers = this.data.markers.filter(m => Number(m.id) !== bId);
+          const finalOrder = res.data; // 后端返回的完整订单对象
 
+          // 1. 按照原逻辑更新地图上的单车 Marker
+          let markers = this.data.markers.filter(m => Number(m.id) !== bId);
           markers.push({
             id: bId,
             latitude: endLat,
@@ -873,6 +875,7 @@ Page({
             height: 40
           });
 
+          // 2. 重置状态，隐藏“正在骑行”面板
           this.setData({
             isRiding: false,
             ridingTime: '00:00',
@@ -881,10 +884,13 @@ Page({
             markers: markers
           });
 
-          wx.showToast({
+          // 3. 弹窗展示结算详情（展示后端算好的钱）
+          wx.showModal({
             title: '还车成功',
-            icon: 'success'
+            icon: 'success',
+            showCancel: false
           });
+
         } else {
           wx.showToast({
             title: '还车失败',
@@ -912,18 +918,9 @@ Page({
       let s = seconds % 60;
       let timeStr = (m < 10 ? '0' + m : m) + ':' + (s < 10 ? '0' + s : s);
 
-      // ✅ 正常骑行费用逻辑
-      let fee = 0;
-
-      if (seconds <= 120) {
-        fee = 0;   // 2分钟内免费
-      } else {
-        fee = 2;   // 超过2分钟固定2元
-      }
-
       this.setData({
         ridingTime: timeStr,
-        ridingFee: fee
+        // ❌ 删除这里的前端 fee 计算逻辑
       });
     }, 1000);
   },
@@ -976,7 +973,7 @@ Page({
       }
 
       // 距离/时间（蓝线用“推荐”）
-      const fastDist = calcDistanceMeters(fast.points);
+      const fastDist = geo.calcDistanceMeters(fast.points);
       const fastMin = estimateMinutesBySpeed(fastDist, 4.0);
 
       // 红线对比（如果存在）
@@ -994,7 +991,7 @@ Page({
 
         if (!same) {
           showRed = true;
-          const jamDist = calcDistanceMeters(jam.points);
+          const jamDist = geo.calcDistanceMeters(jam.points);
           const jamMin = estimateMinutesBySpeed(jamDist, 4.0);
           const diff = jamMin - fastMin;
 

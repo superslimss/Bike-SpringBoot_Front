@@ -1,61 +1,61 @@
 {
-    "pages": [
-        "pages/map/map",
-        "pages/map/instruction/instruction",
-        "pages/map/search/search",
-        "pages/login/login",
-        "pages/register/register",
-        "pages/user/user",
-        "pages/user/statement/statement"
-    ],
-
-    "window": {
-        "backgroundTextStyle": "light",
-        "navigationBarBackgroundColor": "#ffffff",
-        "navigationBarTitleText": "辽石化单车校园导航",
-        "navigationBarTextStyle": "black"
-    },
-    "tabBar": {
-        "list": [
-            {
-                "selectedIconPath": "/images/tabbar/icon_map_HL.png",
-                "iconPath": "/images/tabbar/icon_map.png",
-                "pagePath": "pages/map/map",
-                "text": "地图"
-            },
-            {
-                "selectedIconPath": "/images/tabbar/icon_user_HL.png",
-                "iconPath": "/images/tabbar/icon_user.png",
-                "pagePath": "pages/user/user",
-                "text": "我的"
-            }
-        ]
-    },
-    "style": "v2",
-    "sitemapLocation": "sitemap.json",
-    "lazyCodeLoading": "requiredComponents",
-    "useExtendedLib": {
-        "weui": true
-    },
-    "requiredPrivateInfos": [
-        "getLocation",
-        "onLocationChange",
-        "startLocationUpdate"
-        
-    ],
-    "permission": {
-        "scope.userLocation": {
-            "desc": "需要获取你当前位置信息"
-        }
-    },
-    "plugins": {
-        "wxPano": {
-            "version": "2.1.4",
-            "provider": "wx386c038238531f87"
-        }
-    },
-    "resolveAlias": {
-        "@data/*": "data/*",
-        "@libs/*": "libs/*"
+  "pages": [
+    "pages/map/map",
+    "pages/map/instruction/instruction",
+    "pages/map/search/search",
+    "pages/login/login",
+    "pages/register/register",
+    "pages/user/user",
+    "pages/user/statement/statement",
+    "pages/history/history",
+    "pages/history-detail/history-detail"
+  ],
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTitleText": "辽石化单车校园导航",
+    "navigationBarTextStyle": "black"
+  },
+  "tabBar": {
+    "list": [
+      {
+        "selectedIconPath": "/images/tabbar/icon_map_HL.png",
+        "iconPath": "/images/tabbar/icon_map.png",
+        "pagePath": "pages/map/map",
+        "text": "地图"
+      },
+      {
+        "selectedIconPath": "/images/tabbar/icon_user_HL.png",
+        "iconPath": "/images/tabbar/icon_user.png",
+        "pagePath": "pages/user/user",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents",
+  "useExtendedLib": {
+    "weui": true
+  },
+  "requiredPrivateInfos": [
+    "getLocation",
+    "onLocationChange",
+    "startLocationUpdate"
+  ],
+  "permission": {
+    "scope.userLocation": {
+      "desc": "需要获取你当前位置信息"
     }
+  },
+  "plugins": {
+    "wxPano": {
+      "version": "2.1.4",
+      "provider": "wx386c038238531f87"
+    }
+  },
+  "resolveAlias": {
+    "@data/*": "data/*",
+    "@libs/*": "libs/*"
+  }
 }
