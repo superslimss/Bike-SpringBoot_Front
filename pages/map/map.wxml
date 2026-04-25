@@ -118,7 +118,7 @@
     <view class="time-right">
       <text class="time-label">费用</text>
       <view class="fee-wrap">
-        <text class="fee-num">15</text>
+        <text class="fee-num">{{outOfAreaFee}}</text>
         <text class="fee-unit">元</text>
       </view>
     </view>

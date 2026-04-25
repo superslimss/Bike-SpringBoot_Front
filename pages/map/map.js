@@ -1,15 +1,14 @@
 // pages/map/map.js
-const map = require('../../data/map');
+const map = require('../../data/map'); // 改个名避免和 map 组件混淆
 const media = require('../../data/media');
-const geo = require('../../utils/geo'); // 引入工具类
+const geo = require('../../utils/geo'); 
+const campusGraph = require('../../data/campusGraph');
+const { aStarRoute } = require('../../utils/route/localAStar');
 
 const QQMapWX = require('@libs/qqmap-wx-jssdk.min');
 const qqmapsdk = new QQMapWX({
   key: map.mapKey,
 });
-const campusGraph = require('../../data/campusGraph');
-const { aStarRoute } = require('../../utils/route/localAStar');
-
 function isAfterClassTime() {
   const now = new Date();
   const t = now.getHours() * 60 + now.getMinutes();
@@ -18,7 +17,7 @@ function isAfterClassTime() {
     [12 * 60 + 0, 13 * 60 + 0],
     [15 * 60 + 0, 16 * 60 + 0],   // 新增下午三点到四点
     [16 * 60 + 0, 17 * 60 + 0],   // ✅ 新增：16:00 - 17:00
-    [17 * 60 + 0, 17 * 60 + 60],
+    [19 * 60 + 0, 20 * 60 + 0],   // ✅
     [20 * 60 + 30, 21 * 60 + 10],
   ];
   return ranges.some(([a, b]) => t >= a && t <= b);
@@ -28,70 +27,12 @@ function toLLPoints(points) {
   return points.map(p => ({ latitude: p.latitude, longitude: p.longitude }));
 }
 
-// function calcDistanceMeters(points) {
-//   if (!points || points.length < 2) return 0;
-
-//   const R = 6371000;
-//   const toRad = d => (d * Math.PI) / 180;
-
-//   let sum = 0;
-//   for (let i = 0; i < points.length - 1; i++) {
-//     const a = points[i];
-//     const b = points[i + 1];
-
-//     const dLat = toRad(b.latitude - a.latitude);
-//     const dLng = toRad(b.longitude - a.longitude);
-//     const la1 = toRad(a.latitude);
-//     const la2 = toRad(b.latitude);
-
-//     const x =
-//       Math.sin(dLat / 2) ** 2 +
-//       Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
-
-//     sum += 2 * R * Math.asin(Math.sqrt(x));
-//   }
-//   return sum;
-// }
-
 // 速度：你可以按实际改（骑行一般 3~6m/s；校园慢点 3.5~4.5）
 function estimateMinutesBySpeed(distanceMeters, speedMps = 4.0) {
   if (!distanceMeters) return 0;
   const sec = distanceMeters / speedMps;
   return sec / 60;
 }
-
-// function fmtDistance(m) {
-//   if (m < 1000) return `${Math.round(m)}m`;
-//   return `${(m / 1000).toFixed(2)}km`;
-// }
-
-// function fmtMinutes(min) {
-//   if (min < 1) return `约1分钟`;
-//   return `约${Math.round(min)}分钟`;
-// }
-
-// function isPointInPolygon(point, polygon) {
-//   const x = Number(point.longitude);
-//   const y = Number(point.latitude);
-//   let inside = false;
-
-//   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-//     const xi = Number(polygon[i].lng ?? polygon[i].longitude);
-//     const yi = Number(polygon[i].lat ?? polygon[i].latitude);
-//     const xj = Number(polygon[j].lng ?? polygon[j].longitude);
-//     const yj = Number(polygon[j].lat ?? polygon[j].latitude);
-
-//     const intersect =
-//       ((yi > y) !== (yj > y)) &&
-//       (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-
-//     if (intersect) {
-//       inside = !inside;
-//     }
-//   }
-
-//   return inside;
-// }
 
 // 可选：处理“点刚好压在边上”的情况
 function isPointOnSegment(point, a, b, epsilon = 1e-10) {
@@ -114,74 +55,65 @@ function isPointOnSegment(point, a, b, epsilon = 1e-10) {
   return true;
 }
 
-
 Page({
   data: {
+    // --- 1. 地图基础状态 ---
     latitude: map.latitude,
     longitude: map.longitude,
     scale: map.scale,
+    myMockLat: map.latitude,  // 模拟/实时纬度
+    myMockLng: map.longitude,  // 模拟/实时经度
+    useLocalRoute: true,      // true=本地A*，false=腾讯接口
 
-    category: 0,
-    all_site_data: map.site_data,
-    site_data: [],
-    Marker3_Activated: media.Marker3_Activated,
+    // --- 2. Marker 分类仓库 (优化核心：将点分类存放) ---
+    bikeMarkers: [],          // 存放后端单车
+    parkingMarkers: [],       // 存放停车区图标
+    siteMarkers: [],          // 存放校园地点/地标 (即原本的 site_data 转化后的点)
+    myLocationMarker: null,   // 存放“我的位置”蓝点
+    startMarker: null,        // 导航起点
+    endMarker: null,          // 导航终点
+    
+    // --- 3. 地图渲染容器 (真正绑定在 wxml map 组件上的变量) ---
+    markers: [],              // 由上述仓库合并而成
+    polyline: [],             // 导航路线
+    polygons: [],             // 停车区多边形
 
-    bikeIcon: "/images/bike.png",
-    bikeMarkers: [],
-
-    markers: [],
-    polyline: [],
-
-    start: {
-      name: '当前位置',
-      latitude: '',
-      longitude: ''
-    },
-    end: {
-      name: '',
-      latitude: '',
-      longitude: ''
-    },
-
-    // 我的实时定位标记底稿
-    myPosIcon: "/images/my_pos.png",
-    myLocationMarker: null,
-
-    myMockLat: map.latitude,
-    myMockLng: map.longitude,
-
-    isRiding: false,
-    ridingTime: '00:00',
+    // --- 4. 骑行与计费状态 ---
+    isRiding: false,          // 骑行中状态
+    isUnlockMode: false,      // 扫码/待选车模式
+    ridingTime: '00:00',      // 计时器显示
+    ridingFee: '0.00',        // 前端实时模拟费 (你自己加的逻辑)
+    outOfAreaFee: '0.00',     // 违停结算显示费
     currentOrderId: null,
     ridingBikeId: null,
 
-    endMarkerId: 8888,
-    endMarker: null,
+    // --- 5. 导航与路径规划数据 ---
+    start: { name: '当前位置', latitude: '', longitude: '' },
+    end: { name: '', latitude: '', longitude: '' },
+    pickMode: null,           // 'start' | 'end' | null
+    travelMode: 'bike',       // 'walk' | 'bike'
+    routeDistanceText: '',    // 距离显示
+    routeTimeText: '',        // 时间显示
+    routeExtraText: '',
+    speedWalk: 1.3,
+    speedBike: 4.0,
 
-    pickMode: null, // 'start' | 'end' | null
+    // --- 6. 校园地点与分类数据 ---
+    category: 0,
+    all_site_data: map.site_data, // 原始地标库
+    site_data: [],                // 当前分类下的地标
+    parkingAreas: [],             // 存储停车区原始坐标(逻辑判定用)
+
+    // --- 7. 静态资源与配置 ---
+    bikeIcon: "/images/bike.png",
+    myPosIcon: "/images/my_pos.png",
+    Marker3_Activated: media.Marker3_Activated,
     startMarkerId: 7777,
     endMarkerId: 8888,
-    startMarker: null,
-    endMarker: null,
 
-    isUnlockMode: false, // 是否处于“扫码开锁/待选车”模式
-
-    useLocalRoute: true, // true=本地A*，false=腾讯
-
-    routeDistanceText: '',
-    routeTimeText: '',
-    routeExtraText: '',
-
-    travelMode: 'bike',      // 'walk' | 'bike'
-    speedWalk: 1.3,          // m/s 步行速度（约 4.7km/h）
-    speedBike: 4.0,          // m/s 骑行速度（约 14.4km/h）
-
-    polygons: [],
-    parkingMarkers: [],
-    parkingAreas: [],
-
-    showConfirmModal: false,      // 第一个：是否还车
-    showOutParkingModal: false,   // 第二个：不在停车区
+    // --- 8. UI 交互控制 ---
+    showConfirmModal: false,     // 第一个：是否还车（你之前说想删，先留着）
+    showOutParkingModal: false,  // 第二个：违停结算弹窗
   },
 
   onLoad() {
@@ -637,22 +569,37 @@ Page({
       });
     }
   },
-  toggleUnlockMode() {
-    // 正在骑行就不允许进入开锁模式
-    if (this.data.isRiding) {
-      wx.showToast({ title: '骑行中无法扫码开锁', icon: 'none' });
-      return;
-    }
+// pages/map/map.js
 
-    const next = !this.data.isUnlockMode;
-    this.setData({ isUnlockMode: next });
+toggleUnlockMode() {
+  // --- 1. 新增：登录拦截逻辑 ---
+  const currentUserId = wx.getStorageSync('userId');
+  if (!currentUserId) {
+    wx.showModal({
+      title: '提示',
+      content: '请先登录后再进行骑行',
+      confirmText: '去登录',
+      success: (res) => {
+        if (res.confirm) {
+          wx.navigateTo({
+            url: '/pages/login/login' // 确保你的登录页面路径正确
+          });
+        }
+      }
+    });
+    return; // 拦截成功，不再往下执行
+  }
 
-    if (next) {
-      wx.showToast({ title: '请点击单车开锁', icon: 'none' });
-    } else {
-      wx.showToast({ title: '已取消扫码开锁', icon: 'none' });
-    }
-  },
+  // --- 3. 原有的进入选车模式逻辑 ---
+  const next = !this.data.isUnlockMode;
+  this.setData({ isUnlockMode: next });
+
+  if (next) {
+    wx.showToast({ title: '请点击单车开锁', icon: 'none' });
+  } else {
+    wx.showToast({ title: '已取消扫码开锁', icon: 'none' });
+  }
+},
 
   /**
    * marker 点击：
@@ -684,61 +631,38 @@ Page({
   },
 
   sendUnlockRequest(bikeId) {
-    // 1. 获取本地缓存的真实用户 ID
+    // 此时能进到这里的用户肯定已经登录了，直接获取 ID 即可
     const currentUserId = wx.getStorageSync('userId');
-
-    // 2. 登录拦截：如果没登录，提示并跳转
-    if (!currentUserId) {
-      wx.showModal({
-        title: '提示',
-        content: '请先登录后再进行骑行',
-        confirmText: '去登录',
-        success: (res) => {
-          if (res.confirm) {
-            wx.navigateTo({
-              url: '/pages/login/login'
-            });
-          }
-        }
-      });
-      return;
-    }
-
-    wx.showLoading({
-      title: '正在开锁'
-    });
-
+  
+    wx.showLoading({ title: '正在开锁' });
+  
     wx.request({
       url: 'http://localhost:8080/api/orders/create',
       method: 'POST',
       data: {
         bikeId: bikeId,
-        userId: currentUserId, // ✅ 使用动态获取的真实用户 ID
+        userId: currentUserId, 
         startLat: this.data.myMockLat,
         startLng: this.data.myMockLng
       },
       success: (res) => {
         wx.hideLoading();
         if (res.statusCode === 200) {
-          wx.showToast({
-            title: '开锁成功',
-            icon: 'success'
-          });
-
+          wx.showToast({ title: '开锁成功', icon: 'success' });
+  
           const currentBikeId = Number(bikeId);
           let filteredMarkers = this.data.markers.filter(marker => Number(marker.id) !== currentBikeId);
-
+  
           this.setData({
             isRiding: true,
-            isUnlockMode: false,     // ✅ 开锁成功自动退出扫码模式
+            isUnlockMode: false,
             currentOrderId: res.data.id,
             ridingBikeId: currentBikeId,
             markers: filteredMarkers
           });
-
+  
           this.startTimer();
         } else {
-          // 处理后端返回的非 200 状态码（如 401 非法 ID）
           wx.showToast({
             title: res.data || '创建订单失败',
             icon: 'none'
@@ -747,72 +671,31 @@ Page({
       },
       fail: () => {
         wx.hideLoading();
-        wx.showToast({
-          title: '连接后端失败',
-          icon: 'none'
-        });
+        wx.showToast({ title: '连接服务器失败', icon: 'none' });
       }
     });
   },
 
+  // 修改 map.js 中的 finishOrder
   finishOrder() {
     const endLat = this.data.myMockLat;
     const endLng = this.data.myMockLng;
 
-    wx.showModal({
-      title: '提示',
-      content: '是否确认还车？',
-      confirmText: '确定',
-      cancelText: '取消',
-      success: (res) => {
-        if (!res.confirm) return;
-
-        const matchedArea = this.checkIfInParkingArea(endLat, endLng);
-
-        // 在停车点内：直接还车
-        if (matchedArea) {
-          this.doFinishOrder(endLat, endLng);
-          return;
-        }
-
-        // 不在停车点内：显示你新的违停窗口
-        this.setData({
-          showOutParkingModal: true
-        });
-      }
-    });
-  },
-
-  // 原弹窗：取消还车
-  cancelFinishConfirm() {
-    this.setData({
-      showConfirmModal: false
-    });
-  },
-
-  // 原弹窗：确定还车
-  confirmFinishOrder() {
-    const endLat = this.data.myMockLat;
-    const endLng = this.data.myMockLng;
-
-    // 先关闭原来的“是否确认还车”弹窗
-    this.setData({
-      showConfirmModal: false
-    });
-
-    // 点击“确定”后再进行停车点判断
+    // 1. 直接进行判定，不要第一个“是否确认还车”的弹窗
     const matchedArea = this.checkIfInParkingArea(endLat, endLng);
 
-    // 在停车点内：直接还车
     if (matchedArea) {
+      // 2. 如果在区内，直接走结算流程
       this.doFinishOrder(endLat, endLng);
-      return;
+    } else {
+      // 3. 如果在区外，直接展示那个计算好金额的“违停界面”
+      const currentFee = parseFloat(this.data.ridingFee || 0);
+      const total = (currentFee + 10.0).toFixed(2);
+      this.setData({
+        outOfAreaFee: total,
+        showOutParkingModal: true
+      });
     }
-
-    // 不在停车点内：弹出第二个窗口
-    this.setData({
-      showOutParkingModal: true
-    });
   },
 
   // 第二个弹窗：取消还车
@@ -826,13 +709,12 @@ Page({
     const endLat = this.data.myMockLat;
     const endLng = this.data.myMockLng;
 
-    // 只负责关闭弹窗，不再设置 ridingFee
+    // 只负责关闭弹窗
     this.setData({
       showOutParkingModal: false
-      // ❌ 删除了 ridingFee: 15，金额由后端根据位置自动计算
     });
 
-    // 调用还车执行函数，后端会识别出不在停车区并计费 10(罚款) + 基础费
+    // 调用还车执行函数
     this.doFinishOrder(endLat, endLng);
   },
 
@@ -854,17 +736,14 @@ Page({
         id: this.data.currentOrderId,
         endLat: endLat,
         endLng: endLng
-        // ✅ 不再发送 fee，金额由后端计算
       },
       success: (res) => {
         wx.hideLoading();
         if (res.statusCode === 200) {
-          // --- 核心修复：停止计时器并重置 UI 状态，防止界面卡住 ---
+          // 停止计时器
           this.stopTimer();
 
-          const finalOrder = res.data; // 后端返回的完整订单对象
-
-          // 1. 按照原逻辑更新地图上的单车 Marker
+          // 1. 更新地图上的单车 Marker
           let markers = this.data.markers.filter(m => Number(m.id) !== bId);
           markers.push({
             id: bId,
@@ -884,13 +763,12 @@ Page({
             markers: markers
           });
 
-          // 3. 弹窗展示结算详情（展示后端算好的钱）
+          // 3. 弹窗提示
           wx.showModal({
             title: '还车成功',
-            icon: 'success',
+            content: '本次费用已结算',
             showCancel: false
           });
-
         } else {
           wx.showToast({
             title: '还车失败',
@@ -906,21 +784,36 @@ Page({
         });
       }
     });
-  },
+  }, // <--- 注意这之后的函数也需要逗号
+
+  // map.js
 
   startTimer() {
-    let seconds = 0;
     if (this.timer) clearInterval(this.timer);
+    let seconds = 0;
 
     this.timer = setInterval(() => {
       seconds++;
+
+      // --- 1. 时间显示逻辑 ---
       let m = Math.floor(seconds / 60);
       let s = seconds % 60;
       let timeStr = (m < 10 ? '0' + m : m) + ':' + (s < 10 ? '0' + s : s);
 
+      // --- 2. 前端模拟计费逻辑（与后端同步） ---
+      let fee = 0.0;
+      if (seconds > 30) { // 前30秒免费
+        if (seconds <= 900) {
+          fee = 2.0; // 15分钟内2元
+        } else {
+          fee = 5.0; // 超过15分钟5元
+        }
+      }
+
+      // --- 3. 更新界面 ---
       this.setData({
         ridingTime: timeStr,
-        // ❌ 删除这里的前端 fee 计算逻辑
+        ridingFee: fee.toFixed(2) // 这里的变量名要对应 wxml 里的 {{ridingFee}}
       });
     }, 1000);
   },
@@ -1133,5 +1026,4 @@ Page({
     wx.showToast({ title: '已重置导航', icon: 'none' });
   },
 
-  mapmarker_choose() { }
 });
