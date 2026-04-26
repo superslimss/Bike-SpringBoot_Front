@@ -1,4 +1,5 @@
 // utils/route/localAStar.js
+const mapHelper = require('../mapHelper');
 
 function toRad(deg) {
   return (deg * Math.PI) / 180;
@@ -85,24 +86,24 @@ function nearestEdgeProjection(graph, P) {
   return best;
 }
 
-// 默认下课时间（与你 map.js 一致）
-function isAfterClassTimeDefault() {
-  const now = new Date();
-  const t = now.getHours() * 60 + now.getMinutes();
-  const ranges = [
-    [11 * 60 + 30, 12 * 60 + 10],
-    [12 * 60 + 0, 13 * 60 + 0],
-    [15 * 60 + 0, 16 * 60 + 0],
-    [16 * 60 + 0,  17 * 60 + 0],   // ✅ 新增：16:00 - 17:00
-    [19 * 60 + 0,  20 * 60 + 0],   // ✅
-    [20 * 60 + 30, 21 * 60 + 10],
-  ];
-  return ranges.some(([a, b]) => t >= a && t <= b);
-}
+// // 默认下课时间（与你 map.js 一致）
+// function isAfterClassTimeDefault() {
+//   const now = new Date();
+//   const t = now.getHours() * 60 + now.getMinutes();
+//   const ranges = [
+//     [11 * 60 + 30, 12 * 60 + 10],
+//     [12 * 60 + 0, 13 * 60 + 0],
+//     [15 * 60 + 0, 16 * 60 + 0],
+//     [16 * 60 + 0,  17 * 60 + 0],   // ✅ 新增：16:00 - 17:00
+//     [19 * 60 + 0,  20 * 60 + 0],   // ✅
+//     [20 * 60 + 30, 21 * 60 + 10],
+//   ];
+//   return ranges.some(([a, b]) => t >= a && t <= b);
+// }
 
-// 拥挤系数：useJam=false 时恒为1
+// 修改后的拥挤系数函数
 function congestionFactor(graphRaw, aId, bId, options) {
-  const useJam = options?.useJam !== false; // 默认 true
+  const useJam = options?.useJam !== false; 
   if (!useJam) return 1.0;
 
   const JAM_CONFIG = graphRaw.JAM_CONFIG;
@@ -113,18 +114,17 @@ function congestionFactor(graphRaw, aId, bId, options) {
   const jam = JAM_CONFIG[key];
   if (!jam) return 1.0;
 
+  // --- 这里是修改重点 ---
   const afterClassOverride = options?.afterClassOverride;
   const isAfter = (afterClassOverride === true || afterClassOverride === false)
     ? afterClassOverride
-    : isAfterClassTimeDefault();
+    : mapHelper.isAfterClassTime(); // ✅ 统一调用 mapHelper 里的函数名
 
   if (!isAfter) return 1.0;
 
   const cap = jam.cap || 6;
-
-  // 你要“红色=拥堵耗时长”，这里保持惩罚够明显但不至于完全走不了
-  const base = 1.45;      // 可调：1.2~2.2
-  const capBoost = 1 + (3 / cap); // 比 6/cap 更柔和
+  const base = 1.45;      
+  const capBoost = 1 + (3 / cap); 
   return base * capBoost;
 }
 
