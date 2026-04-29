@@ -7,6 +7,7 @@ const { aStarRoute } = require('../../utils/route/localAStar');
 const mapHelper = require('../../utils/mapHelper');
 const timerHelper = require('../../utils/timerHelper');
 const ui = require('../../utils/uiHelper');
+const api = require('../../services/api');
 
 const QQMapWX = require('@libs/qqmap-wx-jssdk.min');
 const qqmapsdk = new QQMapWX({
@@ -128,104 +129,30 @@ Page({
   // 4. 定位、坐标监听与服务器数据拉取
   // =========================================================================
   loadBikesFromServer() {
-    // 建议改用箭头函数，这样就不需要 const _this = this 了
     wx.request({
-      url: 'http://localhost:8080/api/bikes/list',
-      method: 'GET',
+      url: api.bike.list, // 结构清晰：api -> bike -> list
       success: (res) => {
-        if (res.data && Array.isArray(res.data)) {
-          const bikes = res.data.map(bike => ({
-            id: bike.id,
-            latitude: bike.latitude,
-            longitude: bike.longitude,
-            iconPath: this.data.bikeIcon,
-            width: 35,
-            height: 35,
-            zIndex: 999,
-            callout: {
-              content: " 扫码用车 ",
-              display: 'BYCLICK'
-            }
-          }));
-
-          // ✅ 逻辑瘦身：只负责把数据存入仓库，然后调用刷新引擎
-          this.setData({
-            bikeMarkers: bikes
-          }, () => {
-            this._refreshAllMarkers();
-          });
-        }
+        this.setData({ 
+          bikeMarkers: mapHelper.formatBikes(res.data) 
+        }, () => this._refreshAllMarkers());
       }
     });
   },
   loadParkingAreas() {
     wx.request({
-      url: 'http://localhost:8080/api/parking-areas/list',
+      url: api.parking.list,
       method: 'GET',
       success: (res) => {
-        console.log('停车区接口返回：', res.data);
-        if (!Array.isArray(res.data)) return;
-
-        const parkingAreas = res.data.map(area => ({
-          ...area,
-          points: (area.points || []).map(p => ({
-            lat: Number(p.lat),
-            lng: Number(p.lng)
-          }))
-        }));
-
-        // 1. 处理多边形围栏渲染数据
-        const polygons = parkingAreas
-          .filter(area => area.points && area.points.length >= 3)
-          .map((area, idx) => ({
-            id: area.id || (9000 + idx),
-            points: area.points.map(p => ({
-              latitude: p.lat,
-              longitude: p.lng
-            })),
-            strokeWidth: 2,
-            strokeColor: '#0062ff',
-            fillColor: '#0062ff33',
-            zIndex: 1
-          }));
-
-        // 2. 处理停车图标仓库数据 (parkingMarkers)
-        const parkingMarkers = parkingAreas
-          .filter(area => area.points && area.points.length > 0)
-          .map((area, idx) => {
-            const pts = area.points;
-            const center = pts.reduce((acc, p) => {
-              acc.lat += p.lat;
-              acc.lng += p.lng;
-              return acc;
-            }, { lat: 0, lng: 0 });
-
-            center.lat /= pts.length;
-            center.lng /= pts.length;
-
-            return {
-              id: 7000 + idx,
-              latitude: center.lat,
-              longitude: center.lng,
-              iconPath: '/images/parking.png',
-              width: 28,
-              height: 28,
-              zIndex: 1002,
-              callout: {
-                content: ` ${area.name || '停车点'} `,
-                display: 'BYCLICK',
-                padding: 6,
-                borderRadius: 10
-              }
-            };
-          });
-
-        // ✅ 核心改动：存入仓库并调用统一刷新引擎
+        // 1. 调用工具类进行“一键转化”
+        const result = mapHelper.processParkingData(res.data);
+  
+        // 2. 直接存入对应的仓库
         this.setData({
-          polygons,
-          parkingMarkers, // 更新停车点仓库
-          parkingAreas    // 逻辑判断仍保留原始数据
+          polygons: result.polygons,
+          parkingMarkers: result.markers,
+          parkingAreas: result.parkingAreas
         }, () => {
+          // 3. 刷新地图 Marker 引擎
           this._refreshAllMarkers();
         });
       }
@@ -531,7 +458,7 @@ Page({
     wx.showLoading({ title: '正在开锁' });
 
     wx.request({
-      url: 'http://localhost:8080/api/orders/create',
+      url: api.order.create,
       method: 'POST',
       data: {
         bikeId: bikeId,
@@ -615,7 +542,7 @@ Page({
     });
 
     wx.request({
-      url: 'http://localhost:8080/api/orders/finish',
+      url: api.order.finish,
       method: 'POST',
       header: {
         'content-type': 'application/json'
@@ -684,30 +611,8 @@ Page({
     this.doFinishOrder(endLat, endLng);
   },
   checkIfInParkingArea(lat, lng) {
-    const parkingAreas = this.data.parkingAreas || [];
-    const point = {
-      latitude: Number(lat),
-      longitude: Number(lng)
-    };
-
-    console.log('当前还车坐标：', point);
-    console.log('parkingAreas：', parkingAreas);
-
-    for (let i = 0; i < parkingAreas.length; i++) {
-      const area = parkingAreas[i];
-      const points = area.points || [];
-
-      console.log('正在判断停车区：', area.name);
-      console.log('停车区 points：', JSON.stringify(points));
-
-      if (points.length >= 3 && geo.isPointInPolygon(point, points)) {
-        console.log('命中停车区：', area.name);
-        return area;
-      }
-    }
-
-    console.log('没有命中任何停车区');
-    return null;
+    // 页面不再关心怎么算、怎么遍历，只管拿结果
+    return mapHelper.findMatchedParkingArea({ latitude: lat, longitude: lng }, this.data.parkingAreas);
   },
 
   // =========================================================================
