@@ -107,21 +107,28 @@ Page({
   _refreshAllMarkers() {
     const {
       bikeMarkers, parkingMarkers, siteMarkers,
-      myLocationMarker, startMarker, endMarker
+      myLocationMarker, startMarker, endMarker,
+      isRiding, ridingBikeId // 确保 data 中有这两个状态
     } = this.data;
-
-    // 1. 合并基础图层
+  
+    // 1. 过滤单车图层：如果正在骑行，则从列表中剔除对应的单车
+    let displayBikes = bikeMarkers || [];
+    if (isRiding && ridingBikeId) {
+      displayBikes = displayBikes.filter(bike => bike.id !== ridingBikeId);
+    }
+  
+    // 2. 合并所有图层
     let finalMarkers = [
       ...(siteMarkers || []),
       ...(parkingMarkers || []),
-      ...(bikeMarkers || [])
+      ...displayBikes // 使用过滤后的单车列表
     ];
-
-    // 2. 合并顶层图标
+  
+    // 3. 合并顶层图标
     if (myLocationMarker) finalMarkers.push(myLocationMarker);
     if (startMarker) finalMarkers.push(startMarker);
     if (endMarker) finalMarkers.push(endMarker);
-
+  
     this.setData({ markers: finalMarkers });
   },
 

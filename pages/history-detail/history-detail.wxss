@@ -1,1 +1,106 @@
 /* pages/history-detail/history-detail.wxss */
+page {
+  height: 100%;
+  background-color: #f7f7f7;
+}
+
+.detail-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* 缩小地图高度，给卡片留更多空间 */
+.map {
+  width: 100%;
+  height: 45vh; /* 从原来的占据剩余空间改为固定 45% 高度 */
+}
+
+.detail-card {
+  flex: 1; /* 卡片占据剩余的 55% */
+  background: #ffffff;
+  margin-top: -30rpx;
+  border-radius: 32rpx 32rpx 0 0; /* 仅顶部圆角 */
+  padding: 40rpx 40rpx;
+  box-shadow: 0 -10rpx 20rpx rgba(0, 0, 0, 0.05);
+}
+
+/* 左右布局的 Header */
+.header-section {
+  display: flex;
+  justify-content: space-between; /* 关键：左右撑开 */
+  align-items: center;
+  margin-bottom: 30rpx;
+}
+
+.status-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.status-title {
+  font-size: 36rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.ride-id {
+  font-size: 22rpx;
+  color: #bbb;
+  margin-top: 6rpx;
+}
+
+/* 右侧金额样式 */
+.fee-right {
+  text-align: right;
+}
+
+.fee-amount {
+  font-size: 48rpx;
+  font-weight: bold;
+  color: #ff5252; /* 红色稍微柔和一点，或者改回 #333 */
+}
+
+.symbol {
+  font-size: 28rpx;
+  color: #ff5252;
+  margin-right: 4rpx;
+}
+
+.divider {
+  height: 1rpx;
+  background: #f2f2f2;
+  margin-bottom: 30rpx;
+}
+
+/* 列表条目保持简洁 */
+.info-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+.label {
+  font-size: 26rpx;
+  color: #999;
+  width: 130rpx;
+  margin-left: 20rpx;
+}
+
+.value {
+  font-size: 26rpx;
+  color: #444;
+}
+
+.value.highlight {
+  color: #007aff;
+  font-weight: 500;
+}
+
+/* 装饰小图标 */
+.dot { width: 12rpx; height: 12rpx; border-radius: 50%; }
+.start { background: #4caf50; }
+.end { background: #f44336; }
+.icon-clock {
+  width: 12rpx; height: 12rpx; border: 2rpx solid #007aff; border-radius: 50%;
+}
