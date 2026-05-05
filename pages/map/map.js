@@ -411,7 +411,7 @@ Page({
     const markerId = e.markerId;
     if (markerId === 9999) return; // 我的定位点不处理
     // 只处理单车点击（你原来假设单车 id < 100）
-    if (markerId < 100) {
+    if (markerId < 1000) {
       // ✅ 必须先进入扫码开锁模式，才能点车开锁
       if (!this.data.isUnlockMode) {
         wx.showToast({ title: '请先点击“扫码用车”', icon: 'none' });
@@ -632,7 +632,7 @@ Page({
 
     // 直接调用转换函数
     const staticMarkers = mapHelper.convertToSiteMarkers(
-      siteData.list || [], 
+      siteData.list || [],
       this.data.Marker3_Activated
     );
 

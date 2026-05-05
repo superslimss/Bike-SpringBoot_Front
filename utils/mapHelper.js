@@ -59,10 +59,10 @@ const createMarker = (type, id, lat, lng) => {
 const convertToSiteMarkers = (siteList, iconPath) => {
   if (!siteList || !Array.isArray(siteList)) return [];
   return siteList.map((site, index) => ({
-    id: index + 100, // 避开特殊 ID 区
+    id: 10000 + index, // 地标ID从10000开始，永远不会和单车ID冲突
     latitude: site.latitude,
     longitude: site.longitude,
-    iconPath: iconPath,
+    iconPath:'https://3gimg.qq.com/lightmap/xcx/demoCenter/images/Marker3_Activated@3x.png',
     width: 30,
     height: 30,
     callout: {

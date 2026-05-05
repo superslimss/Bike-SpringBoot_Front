@@ -35,7 +35,6 @@ module.exports = {
       ],
       site_id: [1, 1],
       isUseMapImg: true,
-      img: 'https://cdnjson.com/images/2024/03/13/GXNU9b2e3c77b9ff605a.jpg',
       bounds: {
         opacity: 0.9,
         east: 123.803113,
