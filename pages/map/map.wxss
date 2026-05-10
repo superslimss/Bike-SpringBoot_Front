@@ -433,6 +433,13 @@ page {
   font-weight: 600;
   line-height: 38rpx;
 }
+.route-info-right {
+  margin-top: 6rpx;
+  font-size: 26rpx;
+  color: #2c7dff;
+  font-weight: 600;
+  line-height: 38rpx;
+}
 
 .route-info-head{
   display:flex;
@@ -587,4 +594,68 @@ page {
   font-size: 28rpx;
   border-radius: 40rpx;
   border: none;
+}
+
+.start-nav-btn {
+  position: absolute;
+  right: 16rpx;
+  bottom: 16rpx;
+  background: #007AFF;
+  color: #fff;
+  text-align: center;
+  padding: 8rpx 18rpx;
+  border-radius: 30rpx;
+  font-size: 26rpx;
+}
+
+.nav-guide-card {
+  position: fixed;
+  left: 20rpx;
+  right: 20rpx;
+  top: 140px;
+  z-index: 9999;
+  padding: 18rpx 20rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nav-guide-text {
+  font-size: 30rpx;
+  color: #1a1a1a;
+}
+
+.nav-guide-text {
+  font-size: 30rpx;
+  color: #1a1a1a;
+  flex: 1;
+}
+
+.nav-guide-exit {
+  font-size: 26rpx;
+  color: #007AFF;
+  padding: 8rpx 16rpx;
+}
+
+.debug-controller {
+  position: fixed;
+
+  right: 150rpx;
+  bottom: 240rpx;
+
+  width: 120rpx;
+
+  z-index: 9999;
+}
+
+.debug-controller button {
+  width: 55rpx;
+  height: 55rpx;
+
+  line-height: 55rpx;
+  padding: 0;
+  font-size: 28rpx;
 }

@@ -53,10 +53,71 @@ const fmtMinutes = (min) => {
   return `约${Math.round(min)}分钟`;
 };
 
+function getNearestRouteIndex(points, lat, lng, calcDistance) {
+  let minDist = Infinity;
+  let index = 0;
+
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const d = calcDistance(lat, lng, p.latitude, p.longitude);
+
+    if (d < minDist) {
+      minDist = d;
+      index = i;
+    }
+  }
+
+  return index;
+}
+
+function getTurnDirection(prev, curr, next) {
+  if (!prev || !curr || !next) return '直行';
+
+  const angle1 = Math.atan2(
+    curr.latitude - prev.latitude,
+    curr.longitude - prev.longitude
+  );
+
+  const angle2 = Math.atan2(
+    next.latitude - curr.latitude,
+    next.longitude - curr.longitude
+  );
+
+  let diff = (angle2 - angle1) * 180 / Math.PI;
+
+  if (diff > 180) diff -= 360;
+  if (diff < -180) diff += 360;
+
+  if (Math.abs(diff) < 30) return '直行';
+  return diff > 0 ? '左转' : '右转';
+}
+
+function calcRemainDistance(points, startIndex, calcDistance) {
+  let total = 0;
+
+  for (let i = startIndex; i < points.length - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+
+    total += calcDistance(
+      p1.latitude,
+      p1.longitude,
+      p2.latitude,
+      p2.longitude
+    );
+  }
+
+  return total;
+}
+
+
 // 导出这些工具函数
 module.exports = {
   calcDistanceMeters,
   isPointInPolygon,
   fmtDistance,
-  fmtMinutes
+  fmtMinutes,
+  getNearestRouteIndex,
+  getTurnDirection,
+  calcRemainDistance
 };

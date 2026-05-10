@@ -42,21 +42,66 @@
 </view>
 
 <!-- 路线信息卡片 -->
+<!-- 路线信息卡片 -->
 <view wx:if="{{routeDistanceText}}" class="route-info-card">
-  <view class="route-info-head">
-    <view class="route-info-row">{{routeDistanceText}}</view>
 
-    <view class="route-mode-tabs">
-      <view class="tab {{travelMode==='walk' ? 'tab-on' : ''}}" data-mode="walk" bindtap="onModeTap">步行</view>
-      <view class="tab {{travelMode==='bike' ? 'tab-on' : ''}}" data-mode="bike" bindtap="onModeTap">骑车</view>
+  <!-- 规划模式：显示距离、时间、按钮 -->
+  <block wx:if="{{!isNavigating}}">
+    <view class="route-info-head">
+      <view class="route-info-row">{{routeDistanceText}}</view>
+      <view class="route-mode-tabs">
+        <view class="tab {{travelMode==='walk' ? 'tab-on' : ''}}" data-mode="walk" bindtap="onModeTap">步行</view>
+        <view class="tab {{travelMode==='bike' ? 'tab-on' : ''}}" data-mode="bike" bindtap="onModeTap">骑车</view>
+      </view>
     </view>
-  </view>
 
-  <view class="route-info-row">{{routeTimeText}}</view>
-  <view wx:if="{{routeExtraText}}" class="route-info-extra">{{routeExtraText}}</view>
+    <view class="route-info-row">{{routeTimeText}}</view>
+    <view wx:if="{{routeExtraText}}" class="route-info-extra">{{routeExtraText}}</view>
+    <view wx:if="{{!routeExtraText}}" class="route-info-right">该路径为最佳路径</view>
+
+    <view class="nav-btn-row">
+      <view class="start-nav-btn" bindtap="onStartNavTap">开始导航</view>
+    </view>
+  </block>
+
+  <!-- 导航模式：完全复用原有结构 + 导航信息 + 切换按钮 + 退出按钮 -->
+  <block wx:else>
+    <view class="route-info-head">
+      <!-- 左侧：导航核心提示（前方50米左转） -->
+      <view class="route-info-row">{{navTipText}}</view>
+      <!-- 右侧：保留步行/骑车切换按钮（完全复用原有逻辑） -->
+      <view class="route-mode-tabs">
+        <view class="tab {{travelMode==='walk' ? 'tab-on' : ''}}" data-mode="walk" bindtap="onModeTap">步行</view>
+        <view class="tab {{travelMode==='bike' ? 'tab-on' : ''}}" data-mode="bike" bindtap="onModeTap">骑车</view>
+      </view>
+    </view>
+
+    <!-- 路线数据：剩余距离 + 预估时间（和规划卡片数据一致） -->
+    <view class="route-info-row">剩余 {{navRemainDist}} 米 | {{routeTimeText}}</view>
+    <view wx:if="{{routeExtraText}}" class="route-info-extra">{{routeExtraText}}</view>
+    <view wx:if="{{!routeExtraText}}" class="route-info-right">该路径为最佳路径</view>
+
+    <!-- 底部按钮：替换为退出导航（复用原有样式） -->
+    <view class="nav-btn-row">
+      <view class="start-nav-btn" bindtap="exitNavigation">退出导航</view>
+    </view>
+  </block>
 </view>
 
-<map id="map" style="width: 100%; height: calc(100vh - 100px)" latitude="{{latitude}}" longitude="{{longitude}}" scale="{{scale}}" markers="{{markers}}" polyline="{{polyline}}" polygons="{{polygons}}" show-location="{{false}}" bindmarkertap="markertap" bindtap="onMapTap">
+<view class="debug-controller">
+
+  <button bindtap="moveUp">↑</button>
+
+  <view class="row">
+    <button bindtap="moveLeft">←</button>
+    <button bindtap="moveDown">↓</button>
+    <button bindtap="moveRight">→</button>
+  </view>
+
+</view>
+
+
+<map id="map" style="width: 100%; height: calc(100vh - 100px)" latitude="{{latitude}}" longitude="{{longitude}}" scale="{{scale}}" markers="{{markers}}" polyline="{{polyline}}" polygons="{{polygons}}" show-location="{{false}}" bindmarkertap="markertap" bindtap="{{pickMode ? 'onMapTap' : ''}}">
   <cover-view class="map_right_card" style="margin-top: calc(100vh - 375px)">
     <cover-view class="location" wx:if="{{polyline.length != 0}}" bindtap="restore">
       <cover-image class="img" src="{{restore}}" />

@@ -86,21 +86,6 @@ function nearestEdgeProjection(graph, P) {
   return best;
 }
 
-// // 默认下课时间（与你 map.js 一致）
-// function isAfterClassTimeDefault() {
-//   const now = new Date();
-//   const t = now.getHours() * 60 + now.getMinutes();
-//   const ranges = [
-//     [11 * 60 + 30, 12 * 60 + 10],
-//     [12 * 60 + 0, 13 * 60 + 0],
-//     [15 * 60 + 0, 16 * 60 + 0],
-//     [16 * 60 + 0,  17 * 60 + 0],   // ✅ 新增：16:00 - 17:00
-//     [19 * 60 + 0,  20 * 60 + 0],   // ✅
-//     [20 * 60 + 30, 21 * 60 + 10],
-//   ];
-//   return ranges.some(([a, b]) => t >= a && t <= b);
-// }
-
 // 修改后的拥挤系数函数
 function congestionFactor(graphRaw, aId, bId, options) {
   const useJam = options?.useJam !== false; 

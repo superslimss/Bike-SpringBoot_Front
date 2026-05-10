@@ -1,6 +1,8 @@
 // utils/mapHelper.js
 const geo = require('./geo');
 
+// 在文件顶部加一个常量（方便以后改系数）
+const CONGESTION_TIME_FACTOR = 1.2;
 // ========================================================================
 // 第一分区：基础数据转换 (Data Conversion)
 // ========================================================================
@@ -158,7 +160,10 @@ const getRouteAnalysis = (fastPoints, jamPoints, speed, travelMode) => {
   let extraText = '';
   if (jamPoints && jamPoints.length >= 2) {
     const jamDist = geo.calcDistanceMeters(jamPoints);
-    const jamMin = (jamDist / (speed * 1000 / 60));
+    let  jamMin = (jamDist / (speed * 1000 / 60));
+
+    // ✅ 在这里乘拥堵系数
+    jamMin = jamMin * CONGESTION_TIME_FACTOR;
     extraText = getRouteDiffText(fastMin, jamMin);
   }
 
@@ -192,11 +197,19 @@ const isAfterClassTime = () => {
   const now = new Date();
   const t = now.getHours() * 60 + now.getMinutes();
   const ranges = [
-    [11 * 60 + 30, 12 * 60 + 10], // 上午下课
-    [12 * 60 + 0, 13 * 60 + 0],  // 午休
+    [9 * 60 + 0, 10 * 60 + 0], // 
+    [10 * 60 + 0, 11 * 60 + 0], // 
+    [11 * 60 + 0, 12 * 60 + 0], // 
+    [12 * 60 + 0, 13 * 60 + 0],  // 
+    [13 * 60 + 0, 14 * 60 + 0],  // 
     [14 * 60 + 0, 15 * 60 + 0],
-    [17 * 60 + 0, 18 * 60 + 0],  // 下午下课
-    [20 * 60 + 30, 21 * 60 + 10]  // 晚下课
+    [15 * 60 + 0, 17 * 60 + 0],
+    [17 * 60 + 0, 18 * 60 + 0],  
+    [18 * 60 + 0, 19 * 60 + 0],  
+    [19 * 60 + 0, 20 * 60 + 0],  
+    [20 * 60 + 0, 21 * 60 + 0],  // 晚下课
+    [21 * 60 + 0, 22 * 60 + 0],
+    [22 * 60 + 0, 23 * 60 + 0],
   ];
   return ranges.some(([a, b]) => t >= a && t <= b);
 };

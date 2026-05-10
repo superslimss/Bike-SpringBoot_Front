@@ -54,8 +54,14 @@ Page({
     routeDistanceText: '',    // 距离显示
     routeTimeText: '',        // 时间显示
     routeExtraText: '',
-    speedWalk: 1.3,
-    speedBike: 4.0,
+    speedWalk: 4.5,
+    speedBike: 12.0,
+    showStartNavBtn: false,
+    navCandidateRoute: null,
+    startManuallySet: false,  // 起点是否被手动更改过
+    isNavigating: false,     // 是否处于导航中
+    navTipText: '',          // 导航提示文字，如“前方30米左转”
+    navRemainDist: 0,        // 剩余距离（米）
 
     // --- 6. 校园地点与分类数据 ---
     category: 0,
@@ -110,25 +116,25 @@ Page({
       myLocationMarker, startMarker, endMarker,
       isRiding, ridingBikeId // 确保 data 中有这两个状态
     } = this.data;
-  
+
     // 1. 过滤单车图层：如果正在骑行，则从列表中剔除对应的单车
     let displayBikes = bikeMarkers || [];
     if (isRiding && ridingBikeId) {
       displayBikes = displayBikes.filter(bike => bike.id !== ridingBikeId);
     }
-  
+
     // 2. 合并所有图层
     let finalMarkers = [
       ...(siteMarkers || []),
       ...(parkingMarkers || []),
       ...displayBikes // 使用过滤后的单车列表
     ];
-  
+
     // 3. 合并顶层图标
     if (myLocationMarker) finalMarkers.push(myLocationMarker);
     if (startMarker) finalMarkers.push(startMarker);
     if (endMarker) finalMarkers.push(endMarker);
-  
+
     this.setData({ markers: finalMarkers });
   },
 
@@ -139,8 +145,8 @@ Page({
     wx.request({
       url: api.bike.list, // 结构清晰：api -> bike -> list
       success: (res) => {
-        this.setData({ 
-          bikeMarkers: mapHelper.formatBikes(res.data) 
+        this.setData({
+          bikeMarkers: mapHelper.formatBikes(res.data)
         }, () => this._refreshAllMarkers());
       }
     });
@@ -152,7 +158,7 @@ Page({
       success: (res) => {
         // 1. 调用工具类进行“一键转化”
         const result = mapHelper.processParkingData(res.data);
-  
+
         // 2. 直接存入对应的仓库
         this.setData({
           polygons: result.polygons,
@@ -258,7 +264,7 @@ Page({
       const showRed = !mapHelper.isSameRoute(fast.points, jam.points);
 
       // 4. 组装渲染用的 Polyline 数组
-      const polylines = [{ points: fast.points, color: '#007AFF', width: 6 }];
+      const polylines = [{ points: fast.points, color: '#007AFF', width: 8 }];
       if (showRed) {
         polylines.push({ points: jam.points, color: '#FF0000', width: 6, dottedLine: true });
       }
@@ -267,7 +273,8 @@ Page({
       this.setData({
         polyline: polylines,
         _fastRoutePoints: fast.points,
-        _jamRoutePoints: showRed ? jam.points : []
+        _jamRoutePoints: showRed ? jam.points : [],
+        // startManuallySet: false 
       }, () => {
         this.updateRouteTimeCard(); // 自动计算文字信息
         wx.hideLoading();
@@ -296,6 +303,10 @@ Page({
       [`${mode}Marker`]: newMarker, // 动态更新 startMarker 或 endMarker 仓库
       pickMode: null
     };
+    // ✅ 只有设置起点时才标记为手动更改
+    if (mode === 'start') {
+      updateData.startManuallySet = true;
+    }
 
     this.setData(updateData, () => {
       this._refreshAllMarkers(); // 一键刷新
@@ -372,7 +383,9 @@ Page({
       start: resetStart,
       end: { name: '', latitude: '', longitude: '' },
       startMarker: null,  // 清空起点仓库
-      endMarker: null     // 清空终点仓库
+      endMarker: null,     // 清空终点仓库
+      startManuallySet: false,   // 重置
+      isNavigating: false,       // 关闭导航状态
     }, () => {
       this._refreshAllMarkers(); // 刷新引擎会自动把这两个点从地图上抹掉
       this.resetRouteUI();
@@ -403,12 +416,205 @@ Page({
       }
     });
   },
+  // 点击“开始导航”按钮
+  onStartNavTap() {
+    const routePoints = this.data._fastRoutePoints;
+    if (!routePoints || routePoints.length < 2) {
+      wx.showToast({ title: '暂无可用路线', icon: 'none' });
+      return;
+    }
 
+    // 起点被手动设置 → 弹窗
+    if (this.data.startManuallySet) {
+      wx.showModal({
+        title: '提示',
+        content: '您已更改起点，是否从当前位置开始导航？',
+        cancelText: '取消',
+        confirmText: '开始导航',
+        success: (res) => {
+          if (res.confirm) {
+            // ======================================
+            // 核心修复：重置起点为当前位置 + 重置标记
+            // ======================================
+            this.setData({
+              startManuallySet: false,
+              // 强制把起点还原为默认的当前位置（关键！）
+              'start.latitude': this.data.myMockLat,
+              'start.longitude': this.data.myMockLng,
+              'start.name': '当前位置',
+              startMarker: null
+            }, () => {
+              this._refreshAllMarkers();
+              // 重新规划路线（必须加！否则路线还是旧的）
+              this.formSubmit();
+              // 规划完成后，执行原生导航逻辑
+              setTimeout(() => {
+                this.startNavigation(this.data._fastRoutePoints);
+              }, 200);
+            });
+          }
+        }
+      });
+      return;
+    }
+
+    // 未设置起点 → 默认当前位置的原生导航逻辑
+    this.startNavigation(routePoints);
+  },
+
+  // 启动导航
+  startNavigation(points) {
+    if (this.navTimer) {
+      clearInterval(this.navTimer);
+      this.navTimer = null;
+    }
+  
+    this.setData({
+      isNavigating: true,
+      navTipText: '',
+      navRemainDist: 0
+    }, () => {
+      // 立即更新一次，避免卡片空白/延迟
+      this.updateNavInfo(points);
+  
+      this.navTimer = setInterval(() => {
+        this.updateNavInfo(points);
+      }, 1000);
+    });
+  },
+  calcDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  },
+  // 计算导航卡片内容（核心）
+  updateNavInfo(points) {
+    const { myMockLat, myMockLng } = this.data;
+  
+    if (!points || points.length < 2) {
+      this.exitNavigation();
+      return;
+    }
+  
+    const nearestIndex = geo.getNearestRouteIndex(
+      points,
+      myMockLat,
+      myMockLng,
+      this.calcDistance
+    );
+  
+    const remainDist = Math.round(
+      geo.calcRemainDistance(points, nearestIndex, this.calcDistance)
+    );
+  
+    if (remainDist < 10 || nearestIndex >= points.length - 2) {
+      this.setData({
+        navTipText: '已到达目的地',
+        navRemainDist: 0
+      });
+      clearInterval(this.navTimer);
+      return;
+    }
+  
+    const direction = geo.getTurnDirection(
+      points[nearestIndex - 1],
+      points[nearestIndex],
+      points[nearestIndex + 1]
+    );
+  
+    const nextDist = this.calcDistance(
+      myMockLat,
+      myMockLng,
+      points[nearestIndex + 1].latitude,
+      points[nearestIndex + 1].longitude
+    );
+  
+    const navTip = direction === '直行'
+      ? `沿当前路线继续前进 ${Math.round(nextDist)} 米`
+      : `前方 ${Math.round(nextDist)} 米 ${direction}`;
+  
+    this.setData({
+      navTipText: navTip,
+      navRemainDist: remainDist
+    });
+  },
+  // 计算整条路线总距离
+  calcTotalDistance(points) {
+    let total = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      total += this.calcDistance(p1.latitude, p1.longitude, p2.latitude, p2.longitude);
+    }
+    return total;
+  },
+  // 退出导航
+  exitNavigation() {
+    if (this.navTimer) clearInterval(this.navTimer);
+    this.setData({
+      isNavigating: false,
+      navTipText: '',
+      navRemainDist: 0,
+      startManuallySet: false
+    });
+  },
+
+  //测试移动按钮
+  moveMockPosition(direction) {
+    let { myMockLat, myMockLng } = this.data;
+  
+    // 每次移动距离（大约 3~5 米）
+    const step = 0.00003;
+  
+    switch (direction) {
+      case 'up':
+        myMockLat += step;
+        break;
+  
+      case 'down':
+        myMockLat -= step;
+        break;
+  
+      case 'left':
+        myMockLng -= step;
+        break;
+  
+      case 'right':
+        myMockLng += step;
+        break;
+    }
+  
+    this.handleLocationChange({
+      latitude: myMockLat,
+      longitude: myMockLng
+    });
+  },
+
+  moveUp() {
+    this.moveMockPosition('up');
+  },
+  
+  moveDown() {
+    this.moveMockPosition('down');
+  },
+  
+  moveLeft() {
+    this.moveMockPosition('left');
+  },
+  
+  moveRight() {
+    this.moveMockPosition('right');
+  },
   // =========================================================================
   // 6. 骑行状态、开锁、计时计费与还车结算
   // =========================================================================
   markertap(e) {
     const markerId = e.markerId;
+
     if (markerId === 9999) return; // 我的定位点不处理
     // 只处理单车点击（你原来假设单车 id < 100）
     if (markerId < 1000) {
@@ -505,13 +711,13 @@ Page({
   },
   startTimer() {
     if (this.timer) clearInterval(this.timer);
-    
+
     // 建议在 data 里存一个 rideSeconds 记录纯秒数，方便计算
-    this.setData({ rideSeconds: 0 }); 
+    this.setData({ rideSeconds: 0 });
 
     this.timer = setInterval(() => {
       const seconds = this.data.rideSeconds + 1;
-      
+
       this.setData({
         rideSeconds: seconds,
         ridingTime: timerHelper.formatTime(seconds),
@@ -535,7 +741,7 @@ Page({
     } else {
       // ✅ 逻辑外迁：使用工具类计算违停总额
       const total = timerHelper.calculateTotalWithPenalty(this.data.ridingFee);
-      
+
       this.setData({
         outOfAreaFee: total,
         showOutParkingModal: true
