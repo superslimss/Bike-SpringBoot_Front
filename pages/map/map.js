@@ -56,13 +56,15 @@ Page({
     routeExtraText: '',
     speedWalk: 4.5,
     speedBike: 12.0,
-    showStartNavBtn: false,
-    navCandidateRoute: null,
     startManuallySet: false,  // 起点是否被手动更改过
     isNavigating: false,     // 是否处于导航中
     navTipText: '',          // 导航提示文字，如“前方30米左转”
     navRemainDist: 0,        // 剩余距离（米）
+    navRouteMeta: null,
 
+    selectedRouteType: 'fast',   // fast=推荐路线，jam=拥堵路线
+    selectedRouteText: '推荐路线',
+    hasJamRoute: false,
     // --- 6. 校园地点与分类数据 ---
     category: 0,
     all_site_data: map.site_data, // 原始地标库
@@ -269,12 +271,21 @@ Page({
         polylines.push({ points: jam.points, color: '#FF0000', width: 6, dottedLine: true });
       }
 
+      const navRouteMeta = geo.buildRouteMeta(
+        fast.points,
+        this.calcDistance,
+        geo.getTurnDirection
+      );
+
       // 5. 更新 UI
       this.setData({
         polyline: polylines,
         _fastRoutePoints: fast.points,
         _jamRoutePoints: showRed ? jam.points : [],
-        // startManuallySet: false 
+        navRouteMeta: navRouteMeta,
+        selectedRouteType: 'fast',
+        selectedRouteText: '推荐路线',
+        hasJamRoute: showRed,
       }, () => {
         this.updateRouteTimeCard(); // 自动计算文字信息
         wx.hideLoading();
@@ -338,7 +349,8 @@ Page({
       routeExtraText: '',
 
       _fastRoutePoints: [],
-      _jamRoutePoints: []
+      _jamRoutePoints: [],
+      navRouteMeta: null
     });
   },
   onModeTap(e) {
@@ -368,30 +380,61 @@ Page({
       routeExtraText: res.extraText
     });
   },
-  resetNavigation() {
-    // 1. 准备重置的数据
+  toggleSelectedRoute() {
+    const {
+      hasJamRoute,
+      selectedRouteType,
+      _fastRoutePoints,
+      _jamRoutePoints
+    } = this.data;
+
+    if (!hasJamRoute || !_jamRoutePoints || _jamRoutePoints.length < 2) {
+      wx.showToast({
+        title: '当前只有一条可用路线',
+        icon: 'none'
+      });
+      return;
+    }
+
+    const nextType = selectedRouteType === 'fast' ? 'jam' : 'fast';
+    const selectedPoints = nextType === 'fast' ? _fastRoutePoints : _jamRoutePoints;
+
+    const navRouteMeta = geo.buildRouteMeta(
+      selectedPoints,
+      this.calcDistance,
+      geo.getTurnDirection
+    );
+
+    this.setData({
+      selectedRouteType: nextType,
+      selectedRouteText: nextType === 'fast' ? '推荐路线' : '拥堵路线',
+      navRouteMeta
+    });
+  },
+  resetNavigation(showToast = true) {
     const resetStart = {
       name: '当前位置',
       latitude: this.data.myMockLat || this.data.start.latitude,
       longitude: this.data.myMockLng || this.data.start.longitude
     };
 
-    // 2. 清空仓库变量，不再手动 filter 数组
     this.setData({
       polyline: [],
       pickMode: null,
       start: resetStart,
       end: { name: '', latitude: '', longitude: '' },
-      startMarker: null,  // 清空起点仓库
-      endMarker: null,     // 清空终点仓库
-      startManuallySet: false,   // 重置
-      isNavigating: false,       // 关闭导航状态
+      startMarker: null,
+      endMarker: null,
+      startManuallySet: false,
+      isNavigating: false,
     }, () => {
-      this._refreshAllMarkers(); // 刷新引擎会自动把这两个点从地图上抹掉
+      this._refreshAllMarkers();
       this.resetRouteUI();
     });
 
-    wx.showToast({ title: '已重置导航', icon: 'none' });
+    if (showToast) {
+      wx.showToast({ title: '已重置导航', icon: 'none' });
+    }
   },
   exchange() {
     const {
@@ -418,7 +461,9 @@ Page({
   },
   // 点击“开始导航”按钮
   onStartNavTap() {
-    const routePoints = this.data._fastRoutePoints;
+    const routePoints = this.data.selectedRouteType === 'jam'
+      ? this.data._jamRoutePoints
+      : this.data._fastRoutePoints;
     if (!routePoints || routePoints.length < 2) {
       wx.showToast({ title: '暂无可用路线', icon: 'none' });
       return;
@@ -449,7 +494,11 @@ Page({
               this.formSubmit();
               // 规划完成后，执行原生导航逻辑
               setTimeout(() => {
-                this.startNavigation(this.data._fastRoutePoints);
+                const routePoints = this.data.selectedRouteType === 'jam'
+                  ? this.data._jamRoutePoints
+                  : this.data._fastRoutePoints;
+
+                this.startNavigation(routePoints);
               }, 200);
             });
           }
@@ -464,19 +513,28 @@ Page({
 
   // 启动导航
   startNavigation(points) {
+    if (!points || points.length < 2) {
+      wx.showToast({ title: '暂无可用路线', icon: 'none' });
+      return;
+    }
+
+    if (!this.data.navRouteMeta) {
+      wx.showToast({ title: '导航数据未生成', icon: 'none' });
+      return;
+    }
+
     if (this.navTimer) {
       clearInterval(this.navTimer);
       this.navTimer = null;
     }
-  
+
     this.setData({
       isNavigating: true,
       navTipText: '',
       navRemainDist: 0
     }, () => {
-      // 立即更新一次，避免卡片空白/延迟
       this.updateNavInfo(points);
-  
+
       this.navTimer = setInterval(() => {
         this.updateNavInfo(points);
       }, 1000);
@@ -493,101 +551,100 @@ Page({
   },
   // 计算导航卡片内容（核心）
   updateNavInfo(points) {
-    const { myMockLat, myMockLng } = this.data;
-  
-    if (!points || points.length < 2) {
+    const { myMockLat, myMockLng, navRouteMeta } = this.data;
+
+    if (!navRouteMeta || !navRouteMeta.points || navRouteMeta.points.length < 2) {
       this.exitNavigation();
       return;
     }
-  
-    const nearestIndex = geo.getNearestRouteIndex(
-      points,
+
+    const progress = geo.getRouteProgress(
+      navRouteMeta.points,
+      navRouteMeta.cumDist,
       myMockLat,
       myMockLng,
       this.calcDistance
     );
-  
-    const remainDist = Math.round(
-      geo.calcRemainDistance(points, nearestIndex, this.calcDistance)
+
+    const remainDist = Math.max(
+      0,
+      Math.round(navRouteMeta.totalDistance - progress)
     );
-  
-    if (remainDist < 10 || nearestIndex >= points.length - 2) {
+
+    if (remainDist < 10) {
       this.setData({
         navTipText: '已到达目的地',
         navRemainDist: 0
       });
-      clearInterval(this.navTimer);
+
+      if (this.navTimer) {
+        clearInterval(this.navTimer);
+        this.navTimer = null;
+      }
+
       return;
     }
-  
-    const direction = geo.getTurnDirection(
-      points[nearestIndex - 1],
-      points[nearestIndex],
-      points[nearestIndex + 1]
+
+    const nextTurn = geo.getNextTurnByProgress(
+      navRouteMeta.turns,
+      progress
     );
-  
-    const nextDist = this.calcDistance(
-      myMockLat,
-      myMockLng,
-      points[nearestIndex + 1].latitude,
-      points[nearestIndex + 1].longitude
-    );
-  
-    const navTip = direction === '直行'
-      ? `沿当前路线继续前进 ${Math.round(nextDist)} 米`
-      : `前方 ${Math.round(nextDist)} 米 ${direction}`;
-  
+
+    let navTipText = '';
+
+    if (nextTurn) {
+      const distToTurn = Math.round(nextTurn.distanceFromStart - progress);
+
+      if (distToTurn <= 50) {
+        navTipText = `前方 ${distToTurn} 米 ${nextTurn.direction}`;
+      } else {
+        navTipText = `沿当前道路直行 ${distToTurn} 米`;
+      }
+    } else {
+      navTipText = `沿当前道路直行 ${remainDist} 米`;
+    }
+
     this.setData({
-      navTipText: navTip,
+      navTipText,
       navRemainDist: remainDist
     });
   },
-  // 计算整条路线总距离
-  calcTotalDistance(points) {
-    let total = 0;
-    for (let i = 0; i < points.length - 1; i++) {
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      total += this.calcDistance(p1.latitude, p1.longitude, p2.latitude, p2.longitude);
-    }
-    return total;
-  },
+
   // 退出导航
   exitNavigation() {
-    if (this.navTimer) clearInterval(this.navTimer);
-    this.setData({
-      isNavigating: false,
-      navTipText: '',
-      navRemainDist: 0,
-      startManuallySet: false
-    });
+    if (this.navTimer) {
+      clearInterval(this.navTimer);
+      this.navTimer = null;
+    }
+
+    this.resetNavigation(false);
   },
 
-  //测试移动按钮
+  //测试移动按钮到第六大区
   moveMockPosition(direction) {
     let { myMockLat, myMockLng } = this.data;
-  
+
     // 每次移动距离（大约 3~5 米）
     const step = 0.00003;
-  
+
     switch (direction) {
       case 'up':
         myMockLat += step;
         break;
-  
+
       case 'down':
         myMockLat -= step;
         break;
-  
+
       case 'left':
         myMockLng -= step;
         break;
-  
+
       case 'right':
         myMockLng += step;
         break;
     }
-  
+
     this.handleLocationChange({
       latitude: myMockLat,
       longitude: myMockLng
@@ -597,15 +654,15 @@ Page({
   moveUp() {
     this.moveMockPosition('up');
   },
-  
+
   moveDown() {
     this.moveMockPosition('down');
   },
-  
+
   moveLeft() {
     this.moveMockPosition('left');
   },
-  
+
   moveRight() {
     this.moveMockPosition('right');
   },

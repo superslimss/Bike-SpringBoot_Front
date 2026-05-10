@@ -44,48 +44,52 @@
 <!-- 路线信息卡片 -->
 <!-- 路线信息卡片 -->
 <view wx:if="{{routeDistanceText}}" class="route-info-card">
-
-  <!-- 规划模式：显示距离、时间、按钮 -->
-  <block wx:if="{{!isNavigating}}">
-    <view class="route-info-head">
-      <view class="route-info-row">{{routeDistanceText}}</view>
-      <view class="route-mode-tabs">
-        <view class="tab {{travelMode==='walk' ? 'tab-on' : ''}}" data-mode="walk" bindtap="onModeTap">步行</view>
-        <view class="tab {{travelMode==='bike' ? 'tab-on' : ''}}" data-mode="bike" bindtap="onModeTap">骑车</view>
-      </view>
+<!-- 规划模式：显示距离、时间、按钮 -->
+<block wx:if="{{!isNavigating}}">
+  <view class="route-info-head">
+    <view class="route-info-row">{{routeDistanceText}}</view>
+    <view class="route-mode-tabs">
+      <view class="tab {{travelMode==='walk' ? 'tab-on' : ''}}" data-mode="walk" bindtap="onModeTap">步行</view>
+      <view class="tab {{travelMode==='bike' ? 'tab-on' : ''}}" data-mode="bike" bindtap="onModeTap">骑车</view>
     </view>
+  </view>
 
-    <view class="route-info-row">{{routeTimeText}}</view>
-    <view wx:if="{{routeExtraText}}" class="route-info-extra">{{routeExtraText}}</view>
-    <view wx:if="{{!routeExtraText}}" class="route-info-right">该路径为最佳路径</view>
+  <view class="route-info-row">{{routeTimeText}}</view>
 
-    <view class="nav-btn-row">
-      <view class="start-nav-btn" bindtap="onStartNavTap">开始导航</view>
+  <view wx:if="{{hasJamRoute}}" class="route-switch-row">
+    <text class="route-current-text">当前选择：{{selectedRouteText}}</text>
+    <view class="route-switch-btn" bindtap="toggleSelectedRoute">切换路线</view>
+  </view>
+
+  <view wx:else class="route-info-right">该路径为最佳路径</view>
+
+  <view class="nav-btn-row">
+    <view class="start-nav-btn" bindtap="onStartNavTap">开始导航</view>
+  </view>
+</block>
+
+<!-- 导航模式：导航信息 + 退出按钮 -->
+<block wx:else>
+  <view class="route-info-head">
+    <view class="route-info-row">{{navTipText}}</view>
+    <view class="route-mode-tabs">
+      <view class="tab {{travelMode==='walk' ? 'tab-on' : ''}}" data-mode="walk" bindtap="onModeTap">步行</view>
+      <view class="tab {{travelMode==='bike' ? 'tab-on' : ''}}" data-mode="bike" bindtap="onModeTap">骑车</view>
     </view>
-  </block>
+  </view>
 
-  <!-- 导航模式：完全复用原有结构 + 导航信息 + 切换按钮 + 退出按钮 -->
-  <block wx:else>
-    <view class="route-info-head">
-      <!-- 左侧：导航核心提示（前方50米左转） -->
-      <view class="route-info-row">{{navTipText}}</view>
-      <!-- 右侧：保留步行/骑车切换按钮（完全复用原有逻辑） -->
-      <view class="route-mode-tabs">
-        <view class="tab {{travelMode==='walk' ? 'tab-on' : ''}}" data-mode="walk" bindtap="onModeTap">步行</view>
-        <view class="tab {{travelMode==='bike' ? 'tab-on' : ''}}" data-mode="bike" bindtap="onModeTap">骑车</view>
-      </view>
-    </view>
+  <view class="route-info-row">剩余 {{navRemainDist}} 米 | {{routeTimeText}}</view>
 
-    <!-- 路线数据：剩余距离 + 预估时间（和规划卡片数据一致） -->
-    <view class="route-info-row">剩余 {{navRemainDist}} 米 | {{routeTimeText}}</view>
-    <view wx:if="{{routeExtraText}}" class="route-info-extra">{{routeExtraText}}</view>
-    <view wx:if="{{!routeExtraText}}" class="route-info-right">该路径为最佳路径</view>
+  <view wx:if="{{hasJamRoute}}" class="route-info-extra">
+    当前导航：{{selectedRouteText}}
+  </view>
 
-    <!-- 底部按钮：替换为退出导航（复用原有样式） -->
-    <view class="nav-btn-row">
-      <view class="start-nav-btn" bindtap="exitNavigation">退出导航</view>
-    </view>
-  </block>
+  <view wx:else class="route-info-right">该路径为最佳路径</view>
+
+  <view class="nav-btn-row">
+    <view class="start-nav-btn" bindtap="exitNavigation">退出导航</view>
+  </view>
+</block>
 </view>
 
 <view class="debug-controller">

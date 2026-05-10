@@ -53,22 +53,22 @@ const fmtMinutes = (min) => {
   return `约${Math.round(min)}分钟`;
 };
 
-function getNearestRouteIndex(points, lat, lng, calcDistance) {
-  let minDist = Infinity;
-  let index = 0;
+// function getNearestRouteIndex(points, lat, lng, calcDistance) {
+//   let minDist = Infinity;
+//   let index = 0;
 
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i];
-    const d = calcDistance(lat, lng, p.latitude, p.longitude);
+//   for (let i = 0; i < points.length; i++) {
+//     const p = points[i];
+//     const d = calcDistance(lat, lng, p.latitude, p.longitude);
 
-    if (d < minDist) {
-      minDist = d;
-      index = i;
-    }
-  }
+//     if (d < minDist) {
+//       minDist = d;
+//       index = i;
+//     }
+//   }
 
-  return index;
-}
+//   return index;
+// }
 
 function getTurnDirection(prev, curr, next) {
   if (!prev || !curr || !next) return '直行';
@@ -88,26 +88,114 @@ function getTurnDirection(prev, curr, next) {
   if (diff > 180) diff -= 360;
   if (diff < -180) diff += 360;
 
-  if (Math.abs(diff) < 30) return '直行';
+  if (Math.abs(diff) < 20) return '直行';
   return diff > 0 ? '左转' : '右转';
 }
 
-function calcRemainDistance(points, startIndex, calcDistance) {
-  let total = 0;
+function buildRouteMeta(points, calcDistance, getTurnDirection) {
+  const cumDist = [0];
 
-  for (let i = startIndex; i < points.length - 1; i++) {
-    const p1 = points[i];
-    const p2 = points[i + 1];
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
 
-    total += calcDistance(
-      p1.latitude,
-      p1.longitude,
-      p2.latitude,
-      p2.longitude
+    const d = calcDistance(
+      prev.latitude,
+      prev.longitude,
+      curr.latitude,
+      curr.longitude
     );
+
+    cumDist[i] = cumDist[i - 1] + d;
   }
 
-  return total;
+  const turns = [];
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const direction = getTurnDirection(
+      points[i - 1],
+      points[i],
+      points[i + 1]
+    );
+
+    if (direction !== '直行') {
+      turns.push({
+        index: i,
+        direction,
+        distanceFromStart: cumDist[i]
+      });
+    }
+  }
+
+  return {
+    points,
+    cumDist,
+    turns,
+    totalDistance: cumDist[cumDist.length - 1]
+  };
+}
+
+function getRouteProgress(points, cumDist, lat, lng, calcDistance) {
+  let best = {
+    distance: Infinity,
+    progress: 0
+  };
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+
+    const ax = a.longitude;
+    const ay = a.latitude;
+    const bx = b.longitude;
+    const by = b.latitude;
+    const px = lng;
+    const py = lat;
+
+    const abx = bx - ax;
+    const aby = by - ay;
+    const apx = px - ax;
+    const apy = py - ay;
+
+    const ab2 = abx * abx + aby * aby;
+    let t = ab2 === 0 ? 0 : (apx * abx + apy * aby) / ab2;
+
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+
+    const projLat = ay + aby * t;
+    const projLng = ax + abx * t;
+
+    const dToRoute = calcDistance(lat, lng, projLat, projLng);
+
+    const segLen = calcDistance(
+      a.latitude,
+      a.longitude,
+      b.latitude,
+      b.longitude
+    );
+
+    const progress = cumDist[i] + segLen * t;
+
+    if (dToRoute < best.distance) {
+      best = {
+        distance: dToRoute,
+        progress
+      };
+    }
+  }
+
+  return best.progress;
+}
+
+function getNextTurnByProgress(turns, progress) {
+  for (let i = 0; i < turns.length; i++) {
+    if (turns[i].distanceFromStart > progress + 5) {
+      return turns[i];
+    }
+  }
+
+  return null;
 }
 
 
@@ -117,7 +205,8 @@ module.exports = {
   isPointInPolygon,
   fmtDistance,
   fmtMinutes,
-  getNearestRouteIndex,
   getTurnDirection,
-  calcRemainDistance
+  buildRouteMeta,
+  getRouteProgress,
+  getNextTurnByProgress
 };

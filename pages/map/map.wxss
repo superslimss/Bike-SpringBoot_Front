@@ -659,3 +659,26 @@ page {
   padding: 0;
   font-size: 28rpx;
 }
+
+.route-switch-row {
+  display: flex;
+  align-items: center;
+  margin-top: 6rpx;
+}
+
+.route-current-text {
+  font-size: 24rpx;
+  color: #1677ff;
+  font-weight: 600;
+  margin-right: 16rpx;
+}
+
+.route-switch-btn {
+  padding: 0 18rpx;
+  height: 42rpx;
+  line-height: 42rpx;
+  font-size: 22rpx;
+  color: #fff;
+  background-color: #1677ff;
+  border-radius: 22rpx;
+}
