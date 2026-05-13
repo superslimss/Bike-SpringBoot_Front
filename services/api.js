@@ -4,7 +4,8 @@ const BASE_URL = 'http://localhost:8080/api';
 module.exports = {
   // 所有的接口地址都写在这里
   bike: {
-    list: `${BASE_URL}/bikes/list`
+    list: `${BASE_URL}/bikes/list`,
+    batchDispatch: `${BASE_URL}/bikes/admin/batchDispatch`
   },
   parking: {
     list: `${BASE_URL}/parking-areas/list`

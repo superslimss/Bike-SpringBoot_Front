@@ -126,7 +126,7 @@ const processParkingData = (rawData) => {
       const lngSum = pts.reduce((sum, p) => sum + p.lng, 0);
       
       return {
-        id: 7000 + idx,
+        id: 700000 + Number(a.id),
         latitude: latSum / pts.length,
         longitude: lngSum / pts.length,
         iconPath: '/images/parking.png',

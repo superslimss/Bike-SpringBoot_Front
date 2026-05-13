@@ -44,52 +44,69 @@
 <!-- 路线信息卡片 -->
 <!-- 路线信息卡片 -->
 <view wx:if="{{routeDistanceText}}" class="route-info-card">
-<!-- 规划模式：显示距离、时间、按钮 -->
-<block wx:if="{{!isNavigating}}">
-  <view class="route-info-head">
-    <view class="route-info-row">{{routeDistanceText}}</view>
-    <view class="route-mode-tabs">
-      <view class="tab {{travelMode==='walk' ? 'tab-on' : ''}}" data-mode="walk" bindtap="onModeTap">步行</view>
-      <view class="tab {{travelMode==='bike' ? 'tab-on' : ''}}" data-mode="bike" bindtap="onModeTap">骑车</view>
+  <!-- 规划模式：显示距离、时间、按钮 -->
+  <block wx:if="{{!isNavigating}}">
+    <view class="route-info-head">
+      <view class="route-info-row">{{routeDistanceText}}</view>
+      <view class="route-mode-tabs">
+        <view class="tab {{travelMode==='walk' ? 'tab-on' : ''}}" data-mode="walk" bindtap="onModeTap">步行</view>
+        <view class="tab {{travelMode==='bike' ? 'tab-on' : ''}}" data-mode="bike" bindtap="onModeTap">骑车</view>
+      </view>
     </view>
-  </view>
 
-  <view class="route-info-row">{{routeTimeText}}</view>
+    <view class="route-info-row">{{routeTimeText}}</view>
 
-  <view wx:if="{{hasJamRoute}}" class="route-switch-row">
-    <text class="route-current-text">当前选择：{{selectedRouteText}}</text>
-    <view class="route-switch-btn" bindtap="toggleSelectedRoute">切换路线</view>
-  </view>
-
-  <view wx:else class="route-info-right">该路径为最佳路径</view>
-
-  <view class="nav-btn-row">
-    <view class="start-nav-btn" bindtap="onStartNavTap">开始导航</view>
-  </view>
-</block>
-
-<!-- 导航模式：导航信息 + 退出按钮 -->
-<block wx:else>
-  <view class="route-info-head">
-    <view class="route-info-row">{{navTipText}}</view>
-    <view class="route-mode-tabs">
-      <view class="tab {{travelMode==='walk' ? 'tab-on' : ''}}" data-mode="walk" bindtap="onModeTap">步行</view>
-      <view class="tab {{travelMode==='bike' ? 'tab-on' : ''}}" data-mode="bike" bindtap="onModeTap">骑车</view>
+    <view wx:if="{{hasJamRoute}}" class="route-switch-row">
+      <text class="route-current-text">当前选择：{{selectedRouteText}}</text>
+      <view class="route-switch-btn" bindtap="toggleSelectedRoute">切换路线</view>
     </view>
+
+    <view wx:else class="route-info-right">该路径为最佳路径</view>
+
+    <view class="nav-btn-row">
+      <view class="start-nav-btn" bindtap="onStartNavTap">开始导航</view>
+    </view>
+  </block>
+
+  <!-- 导航模式：导航信息 + 退出按钮 -->
+  <block wx:else>
+    <view class="route-info-head">
+      <view class="route-info-row">{{navTipText}}</view>
+      <view class="route-mode-tabs">
+        <view class="tab {{travelMode==='walk' ? 'tab-on' : ''}}" data-mode="walk" bindtap="onModeTap">步行</view>
+        <view class="tab {{travelMode==='bike' ? 'tab-on' : ''}}" data-mode="bike" bindtap="onModeTap">骑车</view>
+      </view>
+    </view>
+
+    <view class="route-info-row">剩余 {{navRemainDist}} 米 | 预计还需 {{navRemainTimeText}}</view>
+
+    <view wx:if="{{hasJamRoute}}" class="route-info-extra">
+      当前导航：{{selectedRouteText}}
+    </view>
+
+    <view wx:else class="route-info-right">该路径为最佳路径</view>
+
+    <view class="nav-btn-row">
+      <view class="start-nav-btn" bindtap="exitNavigation">退出导航</view>
+    </view>
+  </block>
+</view>
+
+<view wx:if="{{isDispatchMode}}" class="dispatch-panel">
+  <view class="dispatch-title">管理员调度</view>
+
+  <view class="dispatch-info">
+    已选择 {{selectedBikeIds.length}} 辆单车
   </view>
 
-  <view class="route-info-row">剩余 {{navRemainDist}} 米 | {{routeTimeText}}</view>
+  <cover-view class="dispatch-info">
+    目标区域：{{dispatchTargetArea ? dispatchTargetArea.name : '请点击地图停车区'}}
+  </cover-view>
 
-  <view wx:if="{{hasJamRoute}}" class="route-info-extra">
-    当前导航：{{selectedRouteText}}
+  <view class="dispatch-actions">
+    <view class="dispatch-action-btn primary" bindtap="confirmBatchDispatch">确认调度</view>
+    <view class="dispatch-action-btn" bindtap="clearDispatchSelection">清空选择</view>
   </view>
-
-  <view wx:else class="route-info-right">该路径为最佳路径</view>
-
-  <view class="nav-btn-row">
-    <view class="start-nav-btn" bindtap="exitNavigation">退出导航</view>
-  </view>
-</block>
 </view>
 
 <view class="debug-controller">
@@ -179,12 +196,17 @@
   </view>
 </view>
 
+<view wx:if="{{isAdmin}}" class="dispatch-small-btn" bindtap="toggleDispatchMode">
+  {{isDispatchMode ? '退出调度' : '单车调度'}}
+</view>
+
 <!-- 底部扫码用车按钮（非骑行状态才显示） -->
 <view class="bottom-bar" wx:if="{{!isRiding}}">
   <view class="scan-btn {{isUnlockMode ? 'scan-btn-cancel' : ''}}" bindtap="toggleUnlockMode">
     {{isUnlockMode ? '取消扫码' : '扫码用车'}}
   </view>
 </view>
+
 
 <mp-dialog title="{{card.name || '详情'}}" show="{{dialogShow_site}}" bindbuttontap="mapmarker_choose" buttons="{{buttons}}">
   <view>

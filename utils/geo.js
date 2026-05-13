@@ -53,22 +53,6 @@ const fmtMinutes = (min) => {
   return `约${Math.round(min)}分钟`;
 };
 
-// function getNearestRouteIndex(points, lat, lng, calcDistance) {
-//   let minDist = Infinity;
-//   let index = 0;
-
-//   for (let i = 0; i < points.length; i++) {
-//     const p = points[i];
-//     const d = calcDistance(lat, lng, p.latitude, p.longitude);
-
-//     if (d < minDist) {
-//       minDist = d;
-//       index = i;
-//     }
-//   }
-
-//   return index;
-// }
 
 function getTurnDirection(prev, curr, next) {
   if (!prev || !curr || !next) return '直行';
