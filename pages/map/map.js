@@ -9,6 +9,9 @@ const timerHelper = require('../../utils/timerHelper');
 const navigationHelper = require('../../utils/navigationHelper');
 const ui = require('../../utils/uiHelper');
 const api = require('../../services/api');
+const congestionHelper = require('../../utils/congestionHelper');
+const dispatchHelper = require('../../utils/dispatchHelper');
+const faultHelper = require('../../utils/faultHelper');
 
 const QQMapWX = require('@libs/qqmap-wx-jssdk.min');
 const qqmapsdk = new QQMapWX({
@@ -62,6 +65,7 @@ Page({
     navTipText: '',          // 导航提示文字，如“前方30米左转”
     navRemainDist: 0,        // 剩余距离（米）
     navRouteMeta: null,
+    dynamicJamMap: {},
 
     selectedRouteType: 'fast',   // fast=推荐路线，jam=拥堵路线
     selectedRouteText: '推荐路线',
@@ -120,6 +124,25 @@ Page({
   onShow() {
     this.refreshUserRole();
   },
+  // =================================================3. 用户身份与权限======
+  // 3. 用户身份与权限
+  // =========================================================================
+  refreshUserRole() {
+    const role = wx.getStorageSync('role');
+
+    const isAdmin = role === 'admin';
+
+    this.setData({
+      isAdmin,
+
+      // 如果不是管理员，强制关闭调度模式
+      isDispatchMode: isAdmin ? this.data.isDispatchMode : false,
+      selectedBikeIds: isAdmin ? this.data.selectedBikeIds : [],
+      dispatchTargetArea: isAdmin ? this.data.dispatchTargetArea : null
+    }, () => {
+      this.refreshBikeSelectedStyle && this.refreshBikeSelectedStyle();
+    });
+  },
   // =========================================================================
   // 3. 核心渲染引擎 (Warehouse Logic)
   // 所有 Marker 更新必须调用此函数同步到 markers 数组
@@ -151,24 +174,8 @@ Page({
 
     this.setData({ markers: finalMarkers });
   },
-  refreshUserRole() {
-    const role = wx.getStorageSync('role');
-  
-    const isAdmin = role === 'admin';
-  
-    this.setData({
-      isAdmin,
-  
-      // 如果不是管理员，强制关闭调度模式
-      isDispatchMode: isAdmin ? this.data.isDispatchMode : false,
-      selectedBikeIds: isAdmin ? this.data.selectedBikeIds : [],
-      dispatchTargetArea: isAdmin ? this.data.dispatchTargetArea : null
-    }, () => {
-      this.refreshBikeSelectedStyle && this.refreshBikeSelectedStyle();
-    });
-  },
   // =========================================================================
-  // 4. 定位、坐标监听与服务器数据拉取
+  // 4. 数据加载与定位
   // =========================================================================
   loadBikesFromServer() {
     wx.request({
@@ -263,81 +270,142 @@ Page({
       });
     }
   },
-
+  // =========================== 5. 地标分类与地图辅助操作============
+  // 5. 地标分类与地图辅助操作
   // =========================================================================
-  // 5. 导航、选点与 A* 路径规划
+  changeCategory(e) {
+    const categoryIndex = parseInt(e.currentTarget.id);
+    const siteData = this.data.site_data[categoryIndex];
+    if (!siteData) return;
+
+    // 直接调用转换函数
+    const staticMarkers = mapHelper.convertToSiteMarkers(
+      siteData.list || [],
+      this.data.Marker3_Activated
+    );
+
+    this.setData({
+      category: categoryIndex,
+      siteMarkers: staticMarkers // 更新仓库
+    }, () => {
+      this._refreshAllMarkers(); // 统一渲染
+      if (staticMarkers.length > 0) {
+        this.includePoints(staticMarkers);
+      }
+    });
+  },
+  includePoints(points) {
+    const mapCtx = wx.createMapContext('map');
+    if (points.length === 1) {
+      this.setData({
+        latitude: points[0].latitude,
+        longitude: points[0].longitude,
+        scale: 17
+      });
+    } else {
+      mapCtx.includePoints({
+        padding: [150, 100, 100, 100],
+        points: points
+      });
+    }
+  },
+  tosearch() {
+    wx.showToast({
+      title: '请直接点地图选择终点',
+      icon: 'none'
+    });
+  },
+  // ========================================================================= 
+  // 6. 路线规划与路线卡片
   // =========================================================================
   formSubmit() {
     const { start, end } = this.data;
 
     // 1. 基础校验
     if (!end.latitude || !start.latitude) {
-      wx.showToast({ title: end.latitude ? '定位中...' : '请选择终点', icon: 'none' });
+      wx.showToast({
+        title: end.latitude ? '定位中...' : '请选择终点',
+        icon: 'none'
+      });
       return;
     }
 
     wx.showLoading({ title: '路线规划中' });
 
-    try {
-      // 2. 执行 A* 运算（获取原始数据）
-      const fast = aStarRoute(campusGraph, { lat: start.latitude, lng: start.longitude }, { lat: end.latitude, lng: end.longitude }, { useJam: true });
-      const jam = aStarRoute(campusGraph, { lat: start.latitude, lng: start.longitude }, { lat: end.latitude, lng: end.longitude }, { useJam: false });
+    // 2. 先获取后端动态拥堵表
+    this.loadDynamicJamMap((dynamicJamMap) => {
+      try {
+        // 3. 执行 A* 运算，传入 dynamicJamMap
+        const fast = aStarRoute(
+          campusGraph,
+          { lat: start.latitude, lng: start.longitude },
+          { lat: end.latitude, lng: end.longitude },
+          {
+            useJam: true,
+            dynamicJamMap
+          }
+        );
 
-      if (!fast.points || fast.points.length < 2) {
-        wx.hideLoading();
-        wx.showToast({ title: '未找到可用路线', icon: 'none' });
-        return;
-      }
+        const jam = aStarRoute(
+          campusGraph,
+          { lat: start.latitude, lng: start.longitude },
+          { lat: end.latitude, lng: end.longitude },
+          {
+            useJam: false,
+            // dynamicJamMap
+          }
+        );
 
-      // 3. 利用 Helper 进行逻辑对比判定
-      const showRed = !mapHelper.isSameRoute(fast.points, jam.points);
-
-      // 4. 组装渲染用的 Polyline 数组
-      const polylines = [
-        {
-          points: fast.points,
-          color: '#007AFF',
-          width: 10
+        if (!fast.points || fast.points.length < 2) {
+          wx.hideLoading();
+          wx.showToast({
+            title: '未找到可用路线',
+            icon: 'none'
+          });
+          return;
         }
-      ];
 
-      if (showRed) {
-        polylines.push({
-          points: jam.points,
-          color: '#FF0000',
-          width: 5,
-          dottedLine: true
+        // 4. 判断是否显示红线
+        const showRed = !mapHelper.isSameRoute(fast.points, jam.points);
+
+        // 5. 生成默认推荐路线导航数据
+        const navRouteMeta = geo.buildRouteMeta(
+          fast.points,
+          this.calcDistance,
+          geo.getTurnDirection
+        );
+
+        // 6. 更新 UI
+        this.setData({
+          _fastRoutePoints: fast.points,
+          _jamRoutePoints: showRed ? jam.points : [],
+
+          _fastNodePath: fast.nodePath || [],
+          _jamNodePath: showRed ? (jam.nodePath || []) : [],
+
+          navRouteMeta: navRouteMeta,
+          selectedRouteType: 'fast',
+          selectedRouteText: '推荐路线',
+          hasJamRoute: showRed,
+          dynamicJamMap: dynamicJamMap || {}
+        }, () => {
+          this.setData({
+            polyline: this.buildRoutePolylines('fast')
+          });
+
+          this.updateRouteTimeCard();
+          wx.hideLoading();
+        });
+
+      } catch (e) {
+        wx.hideLoading();
+        console.error(e);
+        wx.showToast({
+          title: '规划失败',
+          icon: 'none'
         });
       }
-
-      const navRouteMeta = geo.buildRouteMeta(
-        fast.points,
-        this.calcDistance,
-        geo.getTurnDirection
-      );
-
-      // 5. 更新 UI
-      this.setData({
-        _fastRoutePoints: fast.points,
-        _jamRoutePoints: showRed ? jam.points : [],
-        navRouteMeta: navRouteMeta,
-        selectedRouteType: 'fast',
-        selectedRouteText: '推荐路线',
-        hasJamRoute: showRed,
-      }, () => {
-        this.setData({
-          polyline: this.buildRoutePolylines('fast')
-        });
-
-        this.updateRouteTimeCard();
-        wx.hideLoading();
-      });
-
-    } catch (e) {
-      wx.hideLoading();
-      console.error(e);
-      wx.showToast({ title: '规划失败', icon: 'none' });
-    }
+    });
   },
   onMapTap(e) {
     const { latitude, longitude } = e.detail || {};
@@ -392,6 +460,9 @@ Page({
 
       _fastRoutePoints: [],
       _jamRoutePoints: [],
+      _fastNodePath: [],
+      _jamNodePath: [],
+
       navRouteMeta: null
     });
   },
@@ -405,24 +476,54 @@ Page({
     });
   },
   updateRouteTimeCard() {
-    const { travelMode, speedWalk, speedBike, _fastRoutePoints, _jamRoutePoints } = this.data;
+    const {
+      travelMode,
+      speedWalk,
+      speedBike,
+      selectedRouteType,
+      _fastRoutePoints,
+      _jamRoutePoints,
+      _fastNodePath,
+      _jamNodePath,
+      dynamicJamMap
+    } = this.data;
 
-    // 1. 确定当前速度
     const speed = travelMode === 'walk' ? speedWalk : speedBike;
 
-    // 2. 调用分析器拿回“精装修”后的文案
-    const res = mapHelper.getRouteAnalysis(_fastRoutePoints, _jamRoutePoints, speed, travelMode);
+    const currentPoints = selectedRouteType === 'jam'
+      ? _jamRoutePoints
+      : _fastRoutePoints;
+
+    const comparePoints = selectedRouteType === 'jam'
+      ? _fastRoutePoints
+      : _jamRoutePoints;
+
+    const currentNodePath = selectedRouteType === 'jam'
+      ? _jamNodePath
+      : _fastNodePath;
+
+    const compareNodePath = selectedRouteType === 'jam'
+      ? _fastNodePath
+      : _jamNodePath;
+
+    const res = mapHelper.getRouteAnalysis(
+      currentPoints,
+      comparePoints,
+      speed,
+      travelMode,
+      currentNodePath,
+      compareNodePath,
+      dynamicJamMap
+    );
 
     if (!res) return;
 
-    // 3. 页面只负责更新 UI
     this.setData({
       routeDistanceText: res.distanceText,
       routeTimeText: res.timeText,
       routeExtraText: res.extraText
     });
   },
-
   toggleSelectedRoute() {
     const {
       hasJamRoute,
@@ -456,6 +557,8 @@ Page({
       this.setData({
         polyline: this.buildRoutePolylines(nextType)
       });
+      // 切换路线后，重新计算路线时间和距离
+      this.updateRouteTimeCard();
     });
   },
   buildRoutePolylines(selectedType = 'fast') {
@@ -530,7 +633,33 @@ Page({
       }
     });
   },
-  // 点击“开始导航”按钮
+  //前端获取动态拥堵表
+  loadDynamicJamMap(callback) {
+    wx.request({
+      url: api.congestion.dynamicMap,
+      method: 'GET',
+      success: (res) => {
+        const result = res.data;
+
+        if (result.code === 1) {
+          this.setData({
+            dynamicJamMap: result.data || {}
+          }, () => {
+            if (callback) callback(this.data.dynamicJamMap);
+          });
+        } else {
+          if (callback) callback({});
+        }
+      },
+      fail: () => {
+        console.log('动态拥堵表获取失败');
+        if (callback) callback({});
+      }
+    });
+  },
+  // =====================================7. 实时导航==================== 
+  // 7. 实时导航
+  // =========================================================================
   onStartNavTap() {
     const routePoints = this.data.selectedRouteType === 'jam'
       ? this.data._jamRoutePoints
@@ -581,7 +710,6 @@ Page({
     // 未设置起点 → 默认当前位置的原生导航逻辑
     this.startNavigation(routePoints);
   },
-
   // 启动导航
   startNavigation(points) {
     if (!points || points.length < 2) {
@@ -691,7 +819,6 @@ Page({
       polyline: navPolylines
     });
   },
-
   exitNavigation() {
     if (this.navTimer) {
       clearInterval(this.navTimer);
@@ -700,55 +827,8 @@ Page({
 
     this.resetNavigation(false);
   },
-
-  //测试移动按钮到第六大区
-  moveMockPosition(direction) {
-    let { myMockLat, myMockLng } = this.data;
-
-    // 每次移动距离（大约 3~5 米）
-    const step = 0.00003;
-
-    switch (direction) {
-      case 'up':
-        myMockLat += step;
-        break;
-
-      case 'down':
-        myMockLat -= step;
-        break;
-
-      case 'left':
-        myMockLng -= step;
-        break;
-
-      case 'right':
-        myMockLng += step;
-        break;
-    }
-
-    this.handleLocationChange({
-      latitude: myMockLat,
-      longitude: myMockLng
-    });
-  },
-
-  moveUp() {
-    this.moveMockPosition('up');
-  },
-
-  moveDown() {
-    this.moveMockPosition('down');
-  },
-
-  moveLeft() {
-    this.moveMockPosition('left');
-  },
-
-  moveRight() {
-    this.moveMockPosition('right');
-  },
-  // =========================================================================
-  // 6. 骑行状态、开锁、计时计费与还车结算
+  // ====================================================8. 骑行开锁、计时、还车 
+  // 8. 骑行开锁、计时、还车
   // =========================================================================
   markertap(e) {
     const markerId = e.markerId;
@@ -762,15 +842,37 @@ Page({
     }
     // 只处理单车点击
     if (markerId < 1000) {
-      // 管理员调度模式：点击单车 = 选中 / 取消选中
+      const bike = (this.data.bikeMarkers || []).find(
+        item => Number(item.id) === Number(markerId)
+      );
+
+      // 1. 管理员非调度模式：点击故障车进行维修
+      if (this.data.isAdmin && !this.data.isDispatchMode && bike && bike.status === 2) {
+        this.showAdminFaultAction(bike);
+        return;
+      }
+
+      // 2. 管理员调度模式：点击单车选择调度
       if (this.data.isAdmin && this.data.isDispatchMode) {
         this.toggleSelectBike(markerId);
         return;
       }
 
-      // ✅ 必须先进入扫码开锁模式，才能点车开锁
+      // 3. 普通用户点击故障车：禁止骑行
+      if (bike && bike.status === 2) {
+        wx.showToast({
+          title: '该车辆故障，暂不可用',
+          icon: 'none'
+        });
+        return;
+      }
+
+      // 4. 普通扫码开锁逻辑
       if (!this.data.isUnlockMode) {
-        wx.showToast({ title: '请先点击“扫码用车”', icon: 'none' });
+        wx.showToast({
+          title: '请先点击“扫码用车”',
+          icon: 'none'
+        });
         return;
       }
 
@@ -784,174 +886,6 @@ Page({
         }
       });
     }
-  },
-  toggleDispatchMode() {
-    const next = !this.data.isDispatchMode;
-
-    this.setData({
-      isDispatchMode: next,
-      isUnlockMode: false,
-      selectedBikeIds: next ? this.data.selectedBikeIds : [],
-      dispatchTargetArea: next ? this.data.dispatchTargetArea : null
-    }, () => {
-      this.refreshBikeSelectedStyle();
-    });
-
-    wx.showToast({
-      title: next ? '已进入调度模式' : '已退出调度模式',
-      icon: 'none'
-    });
-  },
-
-  selectDispatchTargetAreaByMarker(markerId) {
-    const areaId = markerId - 700000;
-
-    const area = (this.data.parkingAreas || []).find(
-      item => Number(item.id) === Number(areaId)
-    );
-    if (!area) {
-      wx.showToast({
-        title: '停车区数据不存在',
-        icon: 'none'
-      });
-      return;
-    }
-  
-    this.setData({
-      dispatchTargetArea: area
-    });
-  
-    wx.showToast({
-      title: `已选择${area.name || '停车区'}`,
-      icon: 'none'
-    });
-  },
-
-  toggleSelectBike(bikeId) {
-    let selectedBikeIds = this.data.selectedBikeIds || [];
-
-    if (selectedBikeIds.includes(bikeId)) {
-      selectedBikeIds = selectedBikeIds.filter(id => id !== bikeId);
-    } else {
-      selectedBikeIds.push(bikeId);
-    }
-
-    this.setData({
-      selectedBikeIds
-    }, () => {
-      this.refreshBikeSelectedStyle();
-    });
-  },
-
-  refreshBikeSelectedStyle() {
-    const selectedIds = this.data.selectedBikeIds || [];
-
-    const bikeMarkers = this.data.bikeMarkers.map(marker => {
-      const selected = selectedIds.includes(marker.id);
-
-      return {
-        ...marker,
-        width: selected ? 45 : 35,
-        height: selected ? 45 : 35,
-        callout: selected
-          ? {
-            content: ' 已选中 ',
-            display: 'ALWAYS',
-            padding: 5,
-            borderRadius: 8,
-            bgColor: '#1677ff',
-            color: '#ffffff',
-            fontSize: 12
-          }
-          : { content: ' 扫码用车 ', display: 'BYCLICK' }
-      };
-    });
-
-    this.setData({
-      bikeMarkers
-    }, () => {
-      this._refreshAllMarkers();
-    });
-  },
-
-
-  confirmBatchDispatch() {
-    const { selectedBikeIds, dispatchTargetArea } = this.data;
-
-    if (!selectedBikeIds || selectedBikeIds.length === 0) {
-      wx.showToast({
-        title: '请先选择单车',
-        icon: 'none'
-      });
-      return;
-    }
-
-    if (!dispatchTargetArea) {
-      wx.showToast({
-        title: '请选择目标停车区',
-        icon: 'none'
-      });
-      return;
-    }
-
-    wx.showModal({
-      title: '确认调度',
-      content: `确认将 ${selectedBikeIds.length} 辆单车调度到${dispatchTargetArea.name || '目标停车区'}吗？`,
-      success: (res) => {
-        if (!res.confirm) return;
-
-        wx.request({
-          url: api.bike.batchDispatch,
-          method: 'PUT',
-          header: {
-            'content-type': 'application/json'
-          },
-          data: {
-            bikeIds: selectedBikeIds,
-            parkingAreaId: dispatchTargetArea.id,
-            role: wx.getStorageSync('role')
-          },
-          success: (res) => {
-            const result = res.data;
-
-            if (result.code === 1) {
-              wx.showToast({
-                title: `成功调度${result.successCount || selectedBikeIds.length}辆`,
-                icon: 'success'
-              });
-
-              this.setData({
-                selectedBikeIds: [],
-                dispatchTargetArea: null,
-                isDispatchMode: false
-              });
-
-              this.loadBikesFromServer();
-            } else {
-              wx.showToast({
-                title: result.msg || '调度失败',
-                icon: 'none'
-              });
-            }
-          },
-          fail: () => {
-            wx.showToast({
-              title: '请求失败',
-              icon: 'none'
-            });
-          }
-        });
-      }
-    });
-  },
-
-  clearDispatchSelection() {
-    this.setData({
-      selectedBikeIds: [],
-      dispatchTargetArea: null
-    }, () => {
-      this.refreshBikeSelectedStyle();
-    });
   },
   toggleUnlockMode() {
     // --- 1. 新增：登录拦截逻辑 ---
@@ -1014,6 +948,7 @@ Page({
           });
 
           this.startTimer();
+          this.startSpeedCollector();
         } else {
           wx.showToast({
             title: res.data || '创建订单失败',
@@ -1145,51 +1080,426 @@ Page({
     // 页面不再关心怎么算、怎么遍历，只管拿结果
     return mapHelper.findMatchedParkingArea({ latitude: lat, longitude: lng }, this.data.parkingAreas);
   },
-
+  // =======================================================9. 速度采集与动态拥堵
+  // 9. 速度采集与动态拥堵
   // =========================================================================
-  // 7. 其他 UI 交互（分类切换、弹窗控制、搜索跳转）
-  // =========================================================================
-  changeCategory(e) {
-    const categoryIndex = parseInt(e.currentTarget.id);
-    const siteData = this.data.site_data[categoryIndex];
-    if (!siteData) return;
+  startSpeedCollector() {
+    if (this.speedTimer) {
+      clearInterval(this.speedTimer);
+      this.speedTimer = null;
+    }
 
-    // 直接调用转换函数
-    const staticMarkers = mapHelper.convertToSiteMarkers(
-      siteData.list || [],
-      this.data.Marker3_Activated
+    this.lastSpeedPoint = {
+      lat: this.data.myMockLat,
+      lng: this.data.myMockLng,
+      time: Date.now()
+    };
+
+    this.speedTimer = setInterval(() => {
+      this.reportCurrentSpeed();
+    }, 5000);
+  },
+  stopSpeedCollector() {
+    if (this.speedTimer) {
+      clearInterval(this.speedTimer);
+      this.speedTimer = null;
+    }
+
+    this.lastSpeedPoint = null;
+  },
+  reportCurrentSpeed() {
+    if (!this.data.isRiding) return;
+
+    const nowPoint = {
+      lat: this.data.myMockLat,
+      lng: this.data.myMockLng,
+      time: Date.now()
+    };
+
+    const last = this.lastSpeedPoint;
+
+    if (!last) {
+      this.lastSpeedPoint = nowPoint;
+      return;
+    }
+
+    const dist = this.calcDistance(
+      last.lat,
+      last.lng,
+      nowPoint.lat,
+      nowPoint.lng
     );
 
-    this.setData({
-      category: categoryIndex,
-      siteMarkers: staticMarkers // 更新仓库
-    }, () => {
-      this._refreshAllMarkers(); // 统一渲染
-      if (staticMarkers.length > 0) {
-        this.includePoints(staticMarkers);
+    const seconds = (nowPoint.time - last.time) / 1000;
+
+    if (seconds <= 0) return;
+
+    const speedKmh = (dist / seconds) * 3.6;
+
+    this.lastSpeedPoint = nowPoint;
+
+    // 过滤异常速度
+    if (speedKmh <= 0.5 || speedKmh > 30) {
+      return;
+    }
+
+    const edgeKey = congestionHelper.findNearestEdgeKey(
+      campusGraph,
+      nowPoint.lat,
+      nowPoint.lng
+    );
+
+    if (!edgeKey) {
+      console.log('未匹配到附近路段，跳过速度上报');
+      return;
+    }
+
+    wx.request({
+      url: api.congestion.reportSpeed,
+      method: 'POST',
+      header: {
+        'content-type': 'application/json'
+      },
+      data: {
+        bikeId: this.data.ridingBikeId,
+        userId: wx.getStorageSync('userId'),
+        edgeKey,
+        speedKmh: Number(speedKmh.toFixed(2))
+      },
+      success: (res) => {
+        console.log('速度上报成功', {
+          edgeKey,
+          speedKmh: Number(speedKmh.toFixed(2)),
+          res: res.data
+        });
+      },
+      fail: () => {
+        console.log('速度上报失败');
       }
     });
   },
-  includePoints(points) {
-    const mapCtx = wx.createMapContext('map');
-    if (points.length === 1) {
-      this.setData({
-        latitude: points[0].latitude,
-        longitude: points[0].longitude,
-        scale: 17
-      });
-    } else {
-      mapCtx.includePoints({
-        padding: [150, 100, 100, 100],
-        points: points
-      });
-    }
-  },
-  tosearch() {
+
+  // ========================================================================= 
+  // 10. 管理员调度
+  // =========================================================================
+  toggleDispatchMode() {
+    const next = !this.data.isDispatchMode;
+
+    this.setData({
+      isDispatchMode: next,
+      isUnlockMode: false,
+      selectedBikeIds: next ? this.data.selectedBikeIds : [],
+      dispatchTargetArea: next ? this.data.dispatchTargetArea : null
+    }, () => {
+      this.refreshBikeSelectedStyle();
+    });
+
     wx.showToast({
-      title: '请直接点地图选择终点',
+      title: next ? '已进入调度模式' : '已退出调度模式',
       icon: 'none'
     });
+  },
+  selectDispatchTargetAreaByMarker(markerId) {
+    const area = dispatchHelper.getParkingAreaByMarkerId(
+      markerId,
+      this.data.parkingAreas
+    );
+
+    if (!area) {
+      wx.showToast({
+        title: '停车区数据不存在',
+        icon: 'none'
+      });
+      return;
+    }
+
+    if (Number(area.id) === 0) {
+      wx.showToast({
+        title: '违停区域不能调度',
+        icon: 'none'
+      });
+      return;
+    }
+
+    this.setData({
+      dispatchTargetArea: area
+    });
+
+    wx.showToast({
+      title: `已选择${area.name || '停车区'}`,
+      icon: 'none'
+    });
+  },
+  toggleSelectBike(bikeId) {
+    const selectedBikeIds = dispatchHelper.toggleBikeSelection(
+      this.data.selectedBikeIds,
+      bikeId
+    );
+
+    this.setData({
+      selectedBikeIds
+    }, () => {
+      this.refreshBikeSelectedStyle();
+    });
+  },
+  refreshBikeSelectedStyle() {
+    const bikeMarkers = dispatchHelper.buildBikeMarkersWithSelectedStyle(
+      this.data.bikeMarkers,
+      this.data.selectedBikeIds
+    );
+
+    this.setData({
+      bikeMarkers
+    }, () => {
+      this._refreshAllMarkers();
+    });
+  },
+  confirmBatchDispatch() {
+    const { selectedBikeIds, dispatchTargetArea } = this.data;
+
+    if (!selectedBikeIds || selectedBikeIds.length === 0) {
+      wx.showToast({
+        title: '请先选择单车',
+        icon: 'none'
+      });
+      return;
+    }
+
+    if (!dispatchTargetArea) {
+      wx.showToast({
+        title: '请选择目标停车区',
+        icon: 'none'
+      });
+      return;
+    }
+
+    wx.showModal({
+      title: '确认调度',
+      content: `确认将 ${selectedBikeIds.length} 辆单车调度到${dispatchTargetArea.name || '目标停车区'}吗？`,
+      success: (res) => {
+        if (!res.confirm) return;
+
+        wx.request({
+          url: api.bike.batchDispatch,
+          method: 'PUT',
+          header: {
+            'content-type': 'application/json'
+          },
+          data: {
+            bikeIds: selectedBikeIds,
+            parkingAreaId: dispatchTargetArea.id,
+            role: wx.getStorageSync('role')
+          },
+          success: (res) => {
+            const result = res.data;
+
+            if (result.code === 1) {
+              wx.showToast({
+                title: `成功调度${result.successCount || selectedBikeIds.length}辆`,
+                icon: 'success'
+              });
+
+              this.setData({
+                selectedBikeIds: [],
+                dispatchTargetArea: null,
+                isDispatchMode: false
+              });
+
+              this.loadBikesFromServer();
+            } else {
+              wx.showToast({
+                title: result.msg || '调度失败',
+                icon: 'none'
+              });
+            }
+          },
+          fail: () => {
+            wx.showToast({
+              title: '请求失败',
+              icon: 'none'
+            });
+          }
+        });
+      }
+    });
+  },
+  clearDispatchSelection() {
+    this.setData({
+      selectedBikeIds: [],
+      dispatchTargetArea: null
+    }, () => {
+      this.refreshBikeSelectedStyle();
+    });
+  },
+
+  // ========================================================================= 
+  // 11. 故障上报与维修
+  // =========================================================================
+  showFaultReportPanel() {
+    wx.showModal({
+      title: '故障上报',
+      editable: true,
+      placeholderText: '请输入单车编号，如 BIKE_083',
+      success: (res) => {
+        if (!res.confirm) return;
+
+        const bikeNo = (res.content || '').trim();
+
+        if (!bikeNo) {
+          wx.showToast({
+            title: '请输入单车编号',
+            icon: 'none'
+          });
+          return;
+        }
+
+        this.chooseFaultType(bikeNo);
+      }
+    });
+  },
+  chooseFaultType(bikeNo) {
+    const faultTypes = faultHelper.FAULT_TYPES;
+
+    wx.showActionSheet({
+      itemList: faultTypes,
+      success: (res) => {
+        const faultDesc = faultTypes[res.tapIndex];
+
+        this.submitBikeFault(bikeNo, faultDesc);
+      }
+    });
+  },
+  submitBikeFault(bikeNo, faultDesc) {
+    wx.request({
+      url: api.bike.reportFault,
+      method: 'PUT',
+      header: {
+        'content-type': 'application/json'
+      },
+      data: {
+        bikeNo,
+        faultDesc
+      },
+      success: (res) => {
+        const result = res.data;
+
+        if (result.code === 1) {
+          wx.showToast({
+            title: '上报成功',
+            icon: 'success'
+          });
+
+          this.loadBikesFromServer();
+        } else {
+          wx.showToast({
+            title: result.msg || '上报失败',
+            icon: 'none'
+          });
+        }
+      },
+      fail: () => {
+        wx.showToast({
+          title: '请求失败',
+          icon: 'none'
+        });
+      }
+    });
+  },
+  showAdminFaultAction(bike) {
+    wx.showModal({
+      title: '故障车辆处理',
+      content: `车辆编号：${bike.bikeNo || bike.id}\n故障原因：${bike.faultDesc || '未填写'}`,
+      confirmText: '已维修',
+      cancelText: '取消',
+      success: (res) => {
+        if (!res.confirm) return;
+
+        this.repairBikeFault(bike.id);
+      }
+    });
+  },
+  repairBikeFault(bikeId) {
+    wx.request({
+      url: api.bike.handleFault,
+      method: 'PUT',
+      header: {
+        'content-type': 'application/json'
+      },
+      data: {
+        bikeId: bikeId,
+        status: 0,
+        faultDesc: null,
+        role: wx.getStorageSync('role')
+      },
+      success: (res) => {
+        const result = res.data;
+
+        if (result.code === 1) {
+          wx.showToast({
+            title: '维修完成',
+            icon: 'success'
+          });
+
+          this.loadBikesFromServer();
+        } else {
+          wx.showToast({
+            title: result.msg || '处理失败',
+            icon: 'none'
+          });
+        }
+      },
+      fail: () => {
+        wx.showToast({
+          title: '请求失败',
+          icon: 'none'
+        });
+      }
+    });
+  },
+
+  // ========================================================================= 
+  // 12. 测试移动按钮
+  // =========================================================================
+  moveMockPosition(direction) {
+    let { myMockLat, myMockLng } = this.data;
+
+    // 每次移动距离（大约 3~5 米）
+    const step = 0.00003;
+
+    switch (direction) {
+      case 'up':
+        myMockLat += step;
+        break;
+
+      case 'down':
+        myMockLat -= step;
+        break;
+
+      case 'left':
+        myMockLng -= step;
+        break;
+
+      case 'right':
+        myMockLng += step;
+        break;
+    }
+
+    this.handleLocationChange({
+      latitude: myMockLat,
+      longitude: myMockLng
+    });
+  },
+  moveUp() {
+    this.moveMockPosition('up');
+  },
+  moveDown() {
+    this.moveMockPosition('down');
+  },
+  moveLeft() {
+    this.moveMockPosition('left');
+  },
+  moveRight() {
+    this.moveMockPosition('right');
   },
 
 });

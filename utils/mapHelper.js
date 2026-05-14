@@ -1,5 +1,6 @@
 // utils/mapHelper.js
 const geo = require('./geo');
+const faultHelper = require('./faultHelper');
 
 // 在文件顶部加一个常量（方便以后改系数）
 const CONGESTION_TIME_FACTOR = 1.2;
@@ -81,15 +82,23 @@ const convertToSiteMarkers = (siteList, iconPath) => {
  */
 const formatBikes = (list) => {
   if (!list) return [];
+
   return list.map(bike => ({
     id: bike.id,
     latitude: bike.latitude,
     longitude: bike.longitude,
-    iconPath: "/images/bike.png",
+
+    iconPath: faultHelper.getBikeIconByStatus(bike),
+
     width: 35,
     height: 35,
     zIndex: 999,
-    callout: { content: " 扫码用车 ", display: 'BYCLICK' }
+
+    status: bike.status,
+    bikeNo: bike.bikeNo,
+    faultDesc: bike.faultDesc,
+
+    callout: faultHelper.getBikeCalloutByStatus(bike)
   }));
 };
 
@@ -145,29 +154,77 @@ const processParkingData = (rawData) => {
 // ========================================================================
 // 第三分区：路径与导航分析 (Route Analysis)
 // ========================================================================
+const calcRouteMinutesWithDynamicSpeed = (points, nodePath, baseSpeed, dynamicJamMap = {}) => {
+  if (!points || points.length < 2) return 0;
+
+  let totalMin = 0;
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+
+    const dist = geo.calcDistanceMeters([p1, p2]);
+
+    let realSpeed = baseSpeed;
+
+    if (nodePath && nodePath[i] && nodePath[i + 1]) {
+      const key1 = `${nodePath[i]}-${nodePath[i + 1]}`;
+      const key2 = `${nodePath[i + 1]}-${nodePath[i]}`;
+
+      const info = dynamicJamMap[key1] || dynamicJamMap[key2];
+
+      if (info && info.avgSpeed) {
+        const avgSpeed = Number(info.avgSpeed);
+
+        if (avgSpeed > 0) {
+          // 动态速度只用于降低速度，不让异常高速把预计时间变短
+          realSpeed = Math.min(baseSpeed, avgSpeed);
+        }
+      }
+    }
+
+    totalMin += dist / (realSpeed * 1000 / 60);
+  }
+
+  return totalMin;
+};
 
 /**
  * 导航路线综合分析 (距离、耗时、路线对比)
  */
-const getRouteAnalysis = (fastPoints, jamPoints, speed, travelMode) => {
+const getRouteAnalysis = (
+  fastPoints,
+  jamPoints,
+  speed,
+  travelMode,
+  fastNodePath = [],
+  jamNodePath = [],
+  dynamicJamMap = {}
+) => {
   if (!fastPoints || fastPoints.length < 2) return null;
 
-  // 1. 调用底层 geo 工具计算基础距离数值[cite: 2]
   const fastDist = geo.calcDistanceMeters(fastPoints);
-  const fastMin = (fastDist / (speed * 1000 / 60)); // 计算预估分钟
 
-  // 2. 如果存在对比路线（如红线/拥堵线），处理对比文案
+  const fastMin = calcRouteMinutesWithDynamicSpeed(
+    fastPoints,
+    fastNodePath,
+    speed,
+    dynamicJamMap
+  );
+
   let extraText = '';
-  if (jamPoints && jamPoints.length >= 2) {
-    const jamDist = geo.calcDistanceMeters(jamPoints);
-    let  jamMin = (jamDist / (speed * 1000 / 60));
 
-    // ✅ 在这里乘拥堵系数
-    jamMin = jamMin * CONGESTION_TIME_FACTOR;
+  if (jamPoints && jamPoints.length >= 2) {
+    const jamMin = calcRouteMinutesWithDynamicSpeed(
+      jamPoints,
+      jamNodePath,
+      speed,
+      dynamicJamMap
+    );
+
     extraText = getRouteDiffText(fastMin, jamMin);
   }
 
-  // 3. 返回格式化好的渲染文案
   return {
     distanceText: `预计距离：${geo.fmtDistance(fastDist)}`,
     timeText: `预计时间：${geo.fmtMinutes(fastMin)}（${travelMode === 'walk' ? '步行' : '骑行'}）`,

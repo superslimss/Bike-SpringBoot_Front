@@ -88,7 +88,7 @@ function nearestEdgeProjection(graph, P) {
 
 // 修改后的拥挤系数函数
 function congestionFactor(graphRaw, aId, bId, options) {
-  const useJam = options?.useJam !== false; 
+  const useJam = options?.useJam !== false;
   if (!useJam) return 1.0;
 
   const JAM_CONFIG = graphRaw.JAM_CONFIG;
@@ -108,9 +108,38 @@ function congestionFactor(graphRaw, aId, bId, options) {
   if (!isAfter) return 1.0;
 
   const cap = jam.cap || 6;
-  const base = 1.45;      
-  const capBoost = 1 + (3 / cap); 
+  const base = 1.45;
+  const capBoost = 1 + (3 / cap);
   return base * capBoost;
+}
+//A* 加动态速度权重
+function dynamicSpeedFactor(graphRaw, aId, bId, options) {
+  const dynamicJamMap = options?.dynamicJamMap || {};
+  if (!dynamicJamMap) return 1.0;
+
+  const key = graphRaw.edgeKey
+    ? graphRaw.edgeKey(aId, bId)
+    : `${aId}-${bId}`;
+
+  const reverseKey = graphRaw.edgeKey
+    ? graphRaw.edgeKey(bId, aId)
+    : `${bId}-${aId}`;
+
+  const info = dynamicJamMap[key] || dynamicJamMap[reverseKey];
+
+  if (!info) return 1.0;
+
+  const avgSpeed = Number(info.avgSpeed || 0);
+
+  if (avgSpeed > 0 && avgSpeed < 6) {
+    return 2.0;
+  }
+
+  if (avgSpeed >= 6 && avgSpeed < 10) {
+    return 1.5;
+  }
+
+  return 1.0;
 }
 
 function buildAdj(graphRaw, graph, extraEdges = [], options) {
@@ -127,8 +156,9 @@ function buildAdj(graphRaw, graph, extraEdges = [], options) {
     if (!A || !B) continue;
 
     const dist = distMeter(A, B);
-    const factor = congestionFactor(graphRaw, from, to, options);
-    const w = dist * factor;
+    const staticFactor = congestionFactor(graphRaw, from, to, options);
+    const speedFactor = dynamicSpeedFactor(graphRaw, from, to, options);
+    const w = dist * staticFactor * speedFactor;
 
     adj.get(from).push({ to, w });
     adj.get(to).push({ to: from, w });

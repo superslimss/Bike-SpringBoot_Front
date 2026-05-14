@@ -751,3 +751,27 @@ page {
   background: #1677ff;
   color: #fff;
 }
+
+.fault-report-btn {
+  position: absolute;
+  right: 30rpx;
+  bottom: 450rpx; /* 比 reset-btn 的 340rpx 更高 */
+
+  width: 90rpx;
+  height: 90rpx;
+
+  background-color: #ffffff;
+  border-radius: 50%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  z-index: 999;
+}
+
+.fault-report-icon {
+  width: 48rpx;
+  height: 48rpx;
+}

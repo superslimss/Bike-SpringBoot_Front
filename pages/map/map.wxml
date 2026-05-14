@@ -132,6 +132,14 @@
     </cover-view>
   </cover-view>
 
+  <cover-view 
+  wx:if="{{!isAdmin}}" 
+  class="fault-report-btn" 
+  bindtap="showFaultReportPanel"
+>
+  <cover-image class="fault-report-icon" src="/images/fault.png"></cover-image>
+</cover-view>
+
   <!-- 刷新/重置按钮 -->
   <cover-view class="reset-btn" bindtap="resetNavigation">
     <cover-image src="/images/refresh.png"></cover-image>
